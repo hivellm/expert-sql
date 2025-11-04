@@ -90,13 +90,9 @@
   
   "training": {
     "dataset": {
-      "path": "b-mc2/sql-create-context",
-      "format": "huggingface",
-      "field_mapping": {
-        "instruction": "question",
-        "input": "context",
-        "response": "answer"
-      }
+      "path": "datasets/processed/train.jsonl",
+      "format": "jsonl",
+      "_comment": "Preprocessed dataset with ChatML formatting in 'text' field. Schema canonicalized, dialect-tagged, deduplicated (78311 examples). SFTTrainer will auto-detect 'text' field and enable packing."
     },
     "config": {
       "method": "sft",
@@ -105,26 +101,36 @@
       "alpha": 24,
       "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj", "up_proj", "down_proj"],
       "epochs": 3,
-      "_comment": "DoRA with r=12 (8-16 range), alpha=2*r. Includes MLP (up/down) for better SQL patterns. Batch config optimized for RTX 4090 24GB.",
-      "learning_rate": 0.0003,
-      "batch_size": 32,
-      "gradient_accumulation_steps": 2,
+      "_comment": "DoRA r=12. Qwen3-optimized: 1536 seq optimal for SQL, packing conflicts with group_by_length, selective checkpointing.",
+      "learning_rate": 0.0005,
+      "batch_size": 10,
+      "gradient_accumulation_steps": 6,
       "warmup_steps": 100,
-      "lr_scheduler": "cosine",
-      "max_seq_length": 2048,
-      "dataloader_num_workers": 8,
+      "lr_scheduler": "cosine_with_restarts",
+      "lr_scheduler_kwargs": {"num_cycles": 3},
+      "max_seq_length": 1536,
+      "dataloader_num_workers": 16,
       "dataloader_pin_memory": true,
       "dataloader_prefetch_factor": 8,
       "dataloader_persistent_workers": true,
       "fp16": false,
       "bf16": true,
       "use_tf32": true,
-      "use_sdpa": true,
-      "optim": "adamw_torch_fused",
-      "group_by_length": true,
+      "use_sdpa": false,
+      "flash_attention_2": true,
+      "packing": true,
+      "memory_efficient_attention": true,
+      "torch_compile": true,
+      "torch_compile_backend": "inductor",
+      "torch_compile_mode": "reduce-overhead",
+      "optim": "adamw_bnb_8bit",
+      "group_by_length": false,
       "logging_steps": 10,
-      "gradient_checkpointing": false,
-      "pretokenized_cache": "datasets_optimized/expert-sql/tokenized"
+      "gradient_checkpointing": "selective",
+      "activation_checkpointing": "attention_only",
+      "use_cuda_graphs": true,
+      "cuda_graph_warmup_steps": 100,
+      "_cuda_graphs_comment": "Captures CUDA ops into static graphs via torch.compile. Eliminates Python/CUDA scheduler overhead. +15-20% throughput, +50-100MB VRAM. Requires stable batch shapes (no dynamic shapes)."
     },
     "decoding": {
       "use_grammar": true,
