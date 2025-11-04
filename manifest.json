@@ -1,0 +1,145 @@
+{
+  "name": "expert-sql",
+  "version": "0.0.1",
+  "schema_version": "2.0",
+  "description": "SQL query generation expert trained on text2sql dataset with schema context",
+  "author": "hivellm",
+  "homepage": "https://github.com/hivellm/expert-sql",
+  
+  "base_models": [
+    {
+      "name": "F:/Node/hivellm/expert/models/Qwen3-0.6B",
+      "sha256": "",
+      "quantization": "int4",
+      "rope_scaling": {
+        "type": "ntk-by-parts",
+        "factor": 8.0,
+        "max_position_embeddings": 32768,
+        "original_max_position_embeddings": 8192,
+        "fine_grained": true,
+        "_comment": "Qwen3-specific NTK-by-parts scaling (β=0.25). Matches Rust implementation (qwen3_model.rs:49-57)"
+      },
+      "prompt_template": "chatml",
+      "adapters": [
+        {
+          "type": "dora",
+          "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj", "up_proj", "down_proj"],
+          "r": 12,
+          "alpha": 24,
+          "scaling": "dora",
+          "dropout": 0.05,
+          "path": "qwen3-06b/adapter",
+          "size_bytes": 0,
+          "sha256": "",
+          "_comment": "DoRA r=8-16 for SQL (r=12 balanced). Better quality than LoRA for complex queries (joins, subqueries)"
+        }
+      ]
+    }
+  ],
+  
+  "soft_prompts": [],
+  
+  "constraints": {
+    "max_chain": 10,
+    "load_order": 6,
+    "incompatible_with": [],
+    "requires": []
+  },
+  
+  "capabilities": [
+    "database:sql",
+    "query:sql",
+    "task:text2sql",
+    "feature:schema_understanding",
+    "feature:table_queries",
+    "feature:join_queries",
+    "feature:aggregation",
+    "feature:filtering",
+    "feature:subqueries",
+    "language:en"
+  ],
+  
+  "routing": {
+    "keywords": [
+      "sql",
+      "database",
+      "query",
+      "text2sql",
+      "table",
+      "select",
+      "join",
+      "where"
+    ],
+    "router_hint": "database=sql OR query=sql OR task=text2sql",
+    "priority": 0.80
+  },
+  
+  "perf": {
+    "latency_ms_overhead": 3.0,
+    "vram_mb_overhead": 18,
+    "supported_batch_sizes": [1, 2, 4, 8],
+    "_comment": "DoRA r=12 needs 18MB VRAM (vs 15MB for LoRA). Grammar validation adds 0.5ms latency."
+  },
+  
+  "runtime": {
+    "candle_compatible": true,
+    "requires_kv_cache_persistence": true,
+    "attention_kernel": "flash-v2",
+    "_comment": "Metadata for Rust/Candle runtime. Qwen3 uses custom flash attention kernel (not standard SDPA)."
+  },
+  
+  "training": {
+    "dataset": {
+      "path": "b-mc2/sql-create-context",
+      "format": "huggingface",
+      "field_mapping": {
+        "instruction": "question",
+        "input": "context",
+        "response": "answer"
+      }
+    },
+    "config": {
+      "method": "sft",
+      "adapter_type": "dora",
+      "rank": 12,
+      "alpha": 24,
+      "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj", "up_proj", "down_proj"],
+      "epochs": 3,
+      "_comment": "DoRA with r=12 (8-16 range), alpha=2*r. Includes MLP (up/down) for better SQL patterns. Batch config optimized for RTX 4090 24GB.",
+      "learning_rate": 0.0003,
+      "batch_size": 32,
+      "gradient_accumulation_steps": 2,
+      "warmup_steps": 100,
+      "lr_scheduler": "cosine",
+      "max_seq_length": 2048,
+      "dataloader_num_workers": 8,
+      "dataloader_pin_memory": true,
+      "dataloader_prefetch_factor": 8,
+      "dataloader_persistent_workers": true,
+      "fp16": false,
+      "bf16": true,
+      "use_tf32": true,
+      "use_sdpa": true,
+      "optim": "adamw_torch_fused",
+      "group_by_length": true,
+      "logging_steps": 10,
+      "gradient_checkpointing": false,
+      "pretokenized_cache": "datasets_optimized/expert-sql/tokenized"
+    },
+    "decoding": {
+      "use_grammar": true,
+      "grammar_type": "sql-postgres",
+      "validation": "parser-strict",
+      "stop_sequences": [";", "\n\n"],
+      "temperature": 0.1,
+      "top_p": 0.9,
+      "top_k": 50,
+      "_comment": "SQL requires deterministic output (temp=0.1). Grammar validation prevents syntax errors. Stop sequences prevent over-generation."
+    },
+    "trained_on": "2025-11-03",
+    "base_model_version": "qwen3-0.6b-int4"
+  },
+  
+  "license": "cc-by-4.0",
+  "tags": ["sql", "database", "text2sql", "query-generation"]
+}

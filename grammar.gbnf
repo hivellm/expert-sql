@@ -1,0 +1,126 @@
+# SQL Query Grammar (GBNF format for llama.cpp)
+# Simplified SQL grammar for standard SQL queries
+
+root ::= query
+
+query ::= select-stmt
+
+# SELECT statement
+select-stmt ::= select-clause from-clause where-clause? group-clause? having-clause? order-clause? limit-clause?
+
+select-clause ::= "SELECT" ws (distinct-modifier ws)? select-list
+
+distinct-modifier ::= "DISTINCT" | "ALL"
+
+select-list ::= select-item (ws "," ws select-item)* | "*"
+
+select-item ::= expression (ws "AS" ws alias)?
+
+from-clause ::= ws "FROM" ws table-ref (ws join-clause)*
+
+table-ref ::= table-name (ws "AS" ws alias)?
+
+join-clause ::= join-type ws "JOIN" ws table-name (ws "AS" ws alias)? ws "ON" ws join-condition
+
+join-type ::= ("INNER" ws)? | "LEFT" ws | "RIGHT" ws | "FULL" ws | "CROSS" ws
+
+join-condition ::= expression
+
+where-clause ::= ws "WHERE" ws expression
+
+group-clause ::= ws "GROUP" ws "BY" ws column-ref (ws "," ws column-ref)*
+
+having-clause ::= ws "HAVING" ws expression
+
+order-clause ::= ws "ORDER" ws "BY" ws order-item (ws "," ws order-item)*
+
+order-item ::= expression (ws order-direction)?
+
+order-direction ::= "ASC" | "DESC"
+
+limit-clause ::= ws "LIMIT" ws number (ws "OFFSET" ws number)?
+
+# Expressions
+expression ::= 
+    comparison-expr |
+    logical-expr |
+    arithmetic-expr |
+    function-call |
+    column-ref |
+    literal |
+    subquery |
+    case-expr
+
+comparison-expr ::= expression ws comparison-op ws expression
+
+comparison-op ::= "=" | "!=" | "<>" | "<" | ">" | "<=" | ">=" | "LIKE" | "IN" | "NOT" ws "IN" | "IS" | "IS" ws "NOT"
+
+logical-expr ::= expression ws logical-op ws expression | "NOT" ws expression
+
+logical-op ::= "AND" | "OR"
+
+arithmetic-expr ::= expression ws arithmetic-op ws expression
+
+arithmetic-op ::= "+" | "-" | "*" | "/" | "%"
+
+# Functions
+function-call ::= function-name "(" ws (function-args)? ws ")"
+
+function-name ::= 
+    "COUNT" | "count" |
+    "SUM" | "sum" |
+    "AVG" | "avg" |
+    "MIN" | "min" |
+    "MAX" | "max" |
+    "ROUND" | "round" |
+    "FLOOR" | "floor" |
+    "CEIL" | "ceil" |
+    "UPPER" | "upper" |
+    "LOWER" | "lower" |
+    "LENGTH" | "length" |
+    "TRIM" | "trim" |
+    "SUBSTR" | "substr" |
+    "COALESCE" | "coalesce" |
+    "CAST" | "cast" |
+    "CONCAT" | "concat"
+
+function-args ::= (distinct-modifier ws)? expression (ws "," ws expression)*
+
+# CASE expression
+case-expr ::= "CASE" ws when-clause+ (ws else-clause)? ws "END"
+
+when-clause ::= "WHEN" ws expression ws "THEN" ws expression
+
+else-clause ::= "ELSE" ws expression
+
+# Subquery
+subquery ::= "(" ws select-stmt ws ")"
+
+# Column reference
+column-ref ::= (table-alias ".")? column-name
+
+table-alias ::= identifier
+
+column-name ::= identifier | "*"
+
+table-name ::= identifier
+
+alias ::= identifier
+
+# Identifiers
+identifier ::= [a-zA-Z_][a-zA-Z0-9_]*
+
+# Literals
+literal ::= string | number | boolean | null
+
+string ::= "'" [^']* "'" | "\"" [^"]* "\""
+
+number ::= [0-9]+ ("." [0-9]+)?
+
+boolean ::= "TRUE" | "FALSE" | "true" | "false"
+
+null ::= "NULL" | "null"
+
+# Whitespace
+ws ::= [ \t\n]*
+
