@@ -35,6 +35,12 @@ switch ($TestSuite.ToLower()) {
     "comparison" {
         $testsToRun = @("tests/test_comparison.py")
     }
+    "comprehensive" {
+        $testsToRun = @("tests/test_comprehensive.py")
+    }
+    "advanced" {
+        $testsToRun = @("tests/test_advanced.py")
+    }
     "hard" {
         $testsToRun = @("tests/test_hard.py")
     }
@@ -43,7 +49,7 @@ switch ($TestSuite.ToLower()) {
     }
     default {
         Write-Host "Unknown test suite: $TestSuite" -ForegroundColor Red
-        Write-Host "Available: simple, comparison, hard, all" -ForegroundColor Yellow
+        Write-Host "Available: simple, comparison, comprehensive, advanced, hard, all" -ForegroundColor Yellow
         exit 1
     }
 }

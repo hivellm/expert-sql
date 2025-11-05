@@ -7,7 +7,9 @@ import torch
 import os
 
 BASE_MODEL_PATH = "F:/Node/hivellm/expert/models/Qwen3-0.6B"
-EXPERT_PATH = "../weights/adapter"
+# Get the absolute path of the expert weights
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+EXPERT_PATH = os.path.join(_SCRIPT_DIR, "..", "weights", "qwen3-06b", "final")
 
 
 def load_base_model():
@@ -180,5 +182,11 @@ CREATE TABLE farm_competition (Theme VARCHAR, Host_city_ID VARCHAR)"""
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])
+
+
+
+
+
+
 
 

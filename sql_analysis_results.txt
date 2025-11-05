@@ -1,0 +1,379 @@
+ANALISE QUALITATIVA PROFUNDA - CENARIOS SQL COMPLEXOS
+====================================================================================================
+
+
+CENARIO 1: JOIN Multiplo com Agregacao
+----------------------------------------------------------------------------------------------------
+Pergunta: Mostre o valor total de pedidos por categoria de produto para clientes do Brasil em 2024
+
+BASE MODEL:
+Okay, let's see. The user wants the total order value per product category for Brazilian customers in 2024. Hmm, I need to figure out how to structure the data.
+
+First, I remember that the customers table has a country column. So I need to filter customers where the country is 'Brasil'. Then, the orders table links customers to orders, and order items link to products. So the total would be the sum of all order items' prices multiplied by the quantity, but grouped by product category.
+
+Wait, how do I get the product categories? The products table has a category column. So maybe I need to join the products table with the order items to get product categories. Then, group by category and sum the total price.
+
+But wait, the user mentioned "por categoria de produto", which translates to "by product category". So the categories are in the products table. So the plan is: join orders with order items on order_id, then
+
+CHECKPOINT-250:
+SELECT customers.name, SUM(order_items.total) AS total_sales FROM customers JOIN orders ON customers.id = orders.customer_id JOIN order_items ON orders.id = order_items.order_id JOIN products ON order_items.product_id = products.id WHERE customers.country = 'Brasil' AND orders.order_date >= '2024-01-01' AND products.category = 'Electronics' GROUP BY customers.name ORDER BY total_sales DESC LIMIT 1;
+
+CHECKPOINT-500:
+SELECT customers.name, SUM(order_items.total * products.price) AS total_order FROM customers INNER JOIN orders ON customers.id = orders.customer_id INNER JOIN order_items ON orders.id = order_items.order_id INNER JOIN products ON order_items.product_id = products.id WHERE customers.country = 'Brasil' AND orders.order_date >= '2024-01-01' AND orders.order_date < '2025-01-01' GROUP BY customers.name, products.category ORDER BY total_order DESC LIMIT 10;
+
+ANALISE QUALITATIVA (para ser preenchida):
+  Corretude (BASE):     [  ]/10
+  Corretude (250):      [  ]/10
+  Corretude (500):      [  ]/10
+  Otimizacao (BASE):    [  ]/10
+  Otimizacao (250):     [  ]/10
+  Otimizacao (500):     [  ]/10
+  Completude (BASE):    [  ]/10
+  Completude (250):     [  ]/10
+  Completude (500):     [  ]/10
+  Melhor solucao:       [           ]
+  Comentarios:          
+
+====================================================================================================
+
+
+CENARIO 2: Subquery Correlacionada
+----------------------------------------------------------------------------------------------------
+Pergunta: Liste funcionarios cujo salario e maior que a media do seu proprio departamento
+
+BASE MODEL:
+Okay, the user wants to list employees whose salary is higher than the average salary in their department. Let me think about how to approach this.
+
+First, I need to check the tables. There's an employees table with id, name, salary, and department_id. The departments table has id, name, and budget. So, I need to join these tables on department_id to get the average salary per department.
+
+The average salary per department would be the total salary divided by the number of employees in that department. So, the SQL query should calculate that. Then, filter employees where salary is greater than this average.
+
+Wait, but how do I get the department's average salary? Maybe using a subquery. Like, first get the department's total salary and count, then divide by count. That way, the average is calculated correctly.
+
+So the query would be something like:
+
+SELECT e.name
+FROM employees e
+JOIN departments d ON e.department_id = d.id
+WHERE
+
+CHECKPOINT-250:
+SELECT employees.name FROM employees JOIN departments ON employees.department_id = departments.id WHERE employees.salary > (SELECT AVG(department_budget) FROM departments WHERE department_id = employees.department_id);
+
+CHECKPOINT-500:
+SELECT e.name FROM employees e JOIN departments d ON e.department_id = d.id WHERE salary > (SELECT AVG(salary) FROM employees WHERE department_id = d.id);
+
+ANALISE QUALITATIVA (para ser preenchida):
+  Corretude (BASE):     [  ]/10
+  Corretude (250):      [  ]/10
+  Corretude (500):      [  ]/10
+  Otimizacao (BASE):    [  ]/10
+  Otimizacao (250):     [  ]/10
+  Otimizacao (500):     [  ]/10
+  Completude (BASE):    [  ]/10
+  Completude (250):     [  ]/10
+  Completude (500):     [  ]/10
+  Melhor solucao:       [           ]
+  Comentarios:          
+
+====================================================================================================
+
+
+CENARIO 3: Window Function
+----------------------------------------------------------------------------------------------------
+Pergunta: Ranking dos vendedores por valor total de vendas em cada regiao
+
+BASE MODEL:
+Okay, the user wants to rank salespersons by total sales per region. Let me think about how to approach this.
+
+First, I need to understand the structure of the table. The table has columns: id, salesperson, amount, sale_date, region. The goal is to group by region and calculate the total amount for each region, then sort the salespersons based on that total.
+
+So, the steps would be:
+
+1. Group the sales by region to get the total amount for each region.
+2. For each region, get the salesperson's total amount.
+3. Sort the salespersons by their total amount in descending order.
+
+In SQL, this can be done with a GROUP BY clause. Then, using a HAVING clause to filter by region, but since we want total, maybe a subquery would be better. Wait, maybe a CTE (Common Table Expression) would help here. Alternatively, a subquery that calculates the total amount for each region and
+
+CHECKPOINT-250:
+SELECT salesperson, SUM(amount) as total_sales, rank() OVER (ORDER BY total_sales DESC) as ranking FROM sales GROUP BY salesperson, region ORDER BY ranking;
+
+CHECKPOINT-500:
+SELECT region, salesperson, SUM(amount) as total_sales FROM sales GROUP BY region, salesperson ORDER BY total_sales DESC;
+
+ANALISE QUALITATIVA (para ser preenchida):
+  Corretude (BASE):     [  ]/10
+  Corretude (250):      [  ]/10
+  Corretude (500):      [  ]/10
+  Otimizacao (BASE):    [  ]/10
+  Otimizacao (250):     [  ]/10
+  Otimizacao (500):     [  ]/10
+  Completude (BASE):    [  ]/10
+  Completude (250):     [  ]/10
+  Completude (500):     [  ]/10
+  Melhor solucao:       [           ]
+  Comentarios:          
+
+====================================================================================================
+
+
+CENARIO 4: CTE Recursiva
+----------------------------------------------------------------------------------------------------
+Pergunta: Mostre a hierarquia completa de funcionarios com seus gerentes
+
+BASE MODEL:
+Okay, the user wants a complete hierarchy of employees with their managers. Let me think about how to approach this.
+
+First, I need to understand the structure of the employees table. The table has columns id, name, manager_id, and salary. The manager_id links each employee to their manager. So, each employee has a manager, and the hierarchy would be from the lowest (employee) up to the highest (manager).
+
+The user is asking for a complete hierarchy, which probably means a tree structure. I should create a tree view or a hierarchy table to show this. But since the original table doesn't have a separate hierarchy table, I need to build it manually.
+
+I need to start with the employees and their managers. For each employee, I'll list their name, manager, and salary. Then, for each manager, I'll list their children (employees) and their salary. This way, the hierarchy is built up from the leaves up to the root.
+
+Wait,
+
+CHECKPOINT-250:
+SELECT e.id, e.name, m.name AS manager_name, e.salary, e.manager_id, m.salary FROM employees e JOIN managers m ON e.manager_id = m.id ORDER BY e.manager_id DESC LIMIT 500000000;
+
+CHECKPOINT-500:
+SELECT manager_id, name, salary, manager_id, manager_name FROM employees WHERE manager_id = 1 ORDER BY salary DESC, manager_id DESC, manager_name ASC;
+
+ANALISE QUALITATIVA (para ser preenchida):
+  Corretude (BASE):     [  ]/10
+  Corretude (250):      [  ]/10
+  Corretude (500):      [  ]/10
+  Otimizacao (BASE):    [  ]/10
+  Otimizacao (250):     [  ]/10
+  Otimizacao (500):     [  ]/10
+  Completude (BASE):    [  ]/10
+  Completude (250):     [  ]/10
+  Completude (500):     [  ]/10
+  Melhor solucao:       [           ]
+  Comentarios:          
+
+====================================================================================================
+
+
+CENARIO 5: UNION com Agregacoes Diferentes
+----------------------------------------------------------------------------------------------------
+Pergunta: Consolide todas as vendas do ano e mostre o total por produto
+
+BASE MODEL:
+Okay, the user wants me to consolidate all sales from the year and show the total per product. Let me think about how to approach this.
+
+First, the tables provided are sales_q1, sales_q2, sales_q3, and sales_q4. Each table has a product and revenue. The challenge is to combine these into a single table that shows total revenue for each product across all four quarters.
+
+Wait, but each table is for a different quarter. So if I just add them all together, each product's revenue would be the sum of all four quarters. That makes sense. So the goal is to aggregate each product's revenue from all four tables.
+
+I need to create a new table that combines these data. The structure would be a table with product and revenue columns, where revenue is the sum of all four entries. Then, I can select that table and display the total per product.
+
+But wait, the user mentioned "tudo as vendas do ano". So
+
+CHECKPOINT-250:
+SELECT product, SUM(revenue) as total_sales FROM sales_q1 INNER JOIN sales_q2 ON product = sales_q1.product INNER JOIN sales_q3 ON product = sales_q3.product INNER JOIN sales_q4 ON product = sales_q4.product GROUP BY product ORDER BY product ASC;
+
+CHECKPOINT-500:
+SELECT product, SUM(revenue) as total FROM sales_q1 JOIN sales_q2 ON sales_q1.product = sales_q2.product JOIN sales_q3 ON sales_q2.product = sales_q3.product JOIN sales_q4 ON sales_q3.product = sales_q4.product GROUP BY product ORDER BY product ASC;
+
+ANALISE QUALITATIVA (para ser preenchida):
+  Corretude (BASE):     [  ]/10
+  Corretude (250):      [  ]/10
+  Corretude (500):      [  ]/10
+  Otimizacao (BASE):    [  ]/10
+  Otimizacao (250):     [  ]/10
+  Otimizacao (500):     [  ]/10
+  Completude (BASE):    [  ]/10
+  Completude (250):     [  ]/10
+  Completude (500):     [  ]/10
+  Melhor solucao:       [           ]
+  Comentarios:          
+
+====================================================================================================
+
+
+CENARIO 6: Subquery em SELECT e WHERE
+----------------------------------------------------------------------------------------------------
+Pergunta: Para cada produto, mostre nome, categoria e percentual das vendas totais da sua categoria
+
+BASE MODEL:
+Okay, let's see. The user wants to display the product name, category, and the total sales percentage for each product's category. Hmm, I need to figure out how to structure the data and join tables.
+
+First, looking at the tables provided: there's products, categories, and sales. The products table has id, name, price, and category_id. The categories table has id and name. The sales table has product_id, quantity, and sale_date. 
+
+The user is asking for the sales percentage for each product's category. So, for each product in a category, I need to calculate the total sales and then find the percentage. But wait, how do I get the total sales for each category? Maybe I need to group the sales by category_id and then calculate the total quantity per category. Then, for each product in that category, divide the quantity by the total quantity to get the percentage.
+
+So the steps would be:
+
+1. Join the products
+
+CHECKPOINT-250:
+SELECT products.name, products.category_id, (SELECT SUM(sales.quantity) * 100.0 / (SELECT SUM(sales.quantity) FROM sales) AS total_sales_percent FROM sales WHERE products.id = products.id) AS sales_percent FROM products INNER JOIN sales ON products.id = sales.product_id WHERE products.category_id IN (SELECT id FROM categories WHERE name LIKE 'category%' AND id = 1);
+
+CHECKPOINT-500:
+SELECT products.name, products.category_id, (SUM(sales.quantity) * 100.0 / SUM(sales.quantity)) AS sales_percent FROM products JOIN sales ON products.id = sales.product_id GROUP BY products.id, products.category_id;
+
+ANALISE QUALITATIVA (para ser preenchida):
+  Corretude (BASE):     [  ]/10
+  Corretude (250):      [  ]/10
+  Corretude (500):      [  ]/10
+  Otimizacao (BASE):    [  ]/10
+  Otimizacao (250):     [  ]/10
+  Otimizacao (500):     [  ]/10
+  Completude (BASE):    [  ]/10
+  Completude (250):     [  ]/10
+  Completude (500):     [  ]/10
+  Melhor solucao:       [           ]
+  Comentarios:          
+
+====================================================================================================
+
+
+CENARIO 7: HAVING com Agregacao Complexa
+----------------------------------------------------------------------------------------------------
+Pergunta: Contas que tiveram mais de 10 transacoes e saldo final positivo no mes
+
+BASE MODEL:
+Okay, the user wants to find accounts with more than 10 transactions and a positive balance at the end of the month. Let me think about how to approach this.
+
+First, I need to check the schema. The table is called transactions, with columns id, account_id, amount, type, and date. The user mentioned "contas" which translates to accounts, so I should focus on that.
+
+The query needs to select accounts where the number of transactions is more than 10 and the balance is positive. But wait, how do I get the balance? The balance isn't directly in the table. The amount is per transaction. So I need a way to calculate the final balance.
+
+Ah, right! The balance is the sum of all transactions for the account. So, I need to calculate that. Maybe join the transactions table with itself on account_id to sum up the amounts. But wait, if each transaction is recorded once, summing all transactions would give
+
+CHECKPOINT-250:
+SELECT account_id, SUM(amount) as total_amount, SUM(amount) as total_balance FROM transactions WHERE type IN ('transfer', 'debit') AND total_balance > 0 AND date BETWEEN CURRENT_DATE - INTERVAL '1 months' AND CURRENT_DATE GROUP BY account_id HAVING COUNT(*) > 10 ORDER BY total_balance DESC;
+
+CHECKPOINT-500:
+SELECT t.account_id, t.type, t.date, SUM(t.amount) as total_amount FROM transactions t JOIN accounts a ON t.account_id = a.id WHERE t.type IN ('transfer', 'debt') AND t.date BETWEEN CURRENT_DATE - INTERVAL '1 months' AND CURRENT_DATE AND t.amount > 0 GROUP BY t.account_id, t.type, t.date HAVING COUNT(*) > 10 AND t.amount > 0 ORDER BY t.account_id, t.type, t.date DESC LIMIT 10;
+
+ANALISE QUALITATIVA (para ser preenchida):
+  Corretude (BASE):     [  ]/10
+  Corretude (250):      [  ]/10
+  Corretude (500):      [  ]/10
+  Otimizacao (BASE):    [  ]/10
+  Otimizacao (250):     [  ]/10
+  Otimizacao (500):     [  ]/10
+  Completude (BASE):    [  ]/10
+  Completude (250):     [  ]/10
+  Completude (500):     [  ]/10
+  Melhor solucao:       [           ]
+  Comentarios:          
+
+====================================================================================================
+
+
+CENARIO 8: LEFT JOIN com Condicoes Multiplas
+----------------------------------------------------------------------------------------------------
+Pergunta: Clientes premium com pedidos confirmados mas sem pagamento recebido
+
+BASE MODEL:
+Okay, let's see. The user wants to find customers who are premium and have confirmed orders but haven't received payments yet. So, the main goal is to filter customers where:
+
+1. They are in the premium segment.
+2. They have confirmed orders.
+3. They have not yet received payments.
+
+First, I need to check the tables. The customers table has a segment column. So, I can select customers from customers where segment = 'premium'.
+
+Next, the orders table has status and customer_id. So, I need to find orders where status is 'confirmed' and the customer_id matches the premium customers.
+
+Then, the payments table has order_id, amount, and payment_date. The payments table might not have a status column, so I need to check if there's a way to link payments to the orders. Maybe a join between orders and payments on order_id. But since payments are linked to orders, I can join those two tables on order_id.
+
+So
+
+CHECKPOINT-250:
+SELECT c.name, o.status, o.total FROM customers c JOIN orders o ON c.id = o.customer_id WHERE c.segment = 'premium' AND o.status = 'confirmed' AND o.total = 0 AND o.payment_date IS NULL;
+
+CHECKPOINT-500:
+SELECT customers.name, orders.status FROM customers JOIN orders ON customers.id = orders.customer_id JOIN payments ON orders.id = payments.order_id WHERE customers.segment = 'premium' AND orders.status = 'confirmado' AND payments.amount = 0;
+
+ANALISE QUALITATIVA (para ser preenchida):
+  Corretude (BASE):     [  ]/10
+  Corretude (250):      [  ]/10
+  Corretude (500):      [  ]/10
+  Otimizacao (BASE):    [  ]/10
+  Otimizacao (250):     [  ]/10
+  Otimizacao (500):     [  ]/10
+  Completude (BASE):    [  ]/10
+  Completude (250):     [  ]/10
+  Completude (500):     [  ]/10
+  Melhor solucao:       [           ]
+  Comentarios:          
+
+====================================================================================================
+
+
+CENARIO 9: CASE WHEN Aninhado
+----------------------------------------------------------------------------------------------------
+Pergunta: Classifique funcionarios em Junior/Pleno/Senior baseado em salario E anos de servico, com bonus se performance > 8
+
+BASE MODEL:
+Okay, let's tackle this problem. The user wants to classify employees into Junior, Pleno, or Senior based on their salary and years of service, with a bonus if the performance score is above 8. 
+
+First, I need to check the existing table structure. The table has columns: id, name, salary, years_service, performance_score. The salary and years_service are integers, and the performance_score is a decimal. The bonus is conditional on performance > 8.
+
+So, the classification criteria are:
+- If salary is below 5000 and years_service is below 5, then classify as Junior.
+- If salary is 5000 or more and years_service is 5 or more, then classify as Pleno.
+- If salary is above 5000 and years_service is above 5, then classify as Senior.
+
+Wait, but the bonus is only if performance > 8. So, the bonus is not applied in
+
+CHECKPOINT-250:
+SELECT name, salary, years_service, performance_score, CASE WHEN performance_score > 8 THEN 'Pleno' ELSE 'Junior' END AS role FROM employees WHERE performance_score IS NOT NULL;
+
+CHECKPOINT-500:
+SELECT name, salary, years_service, performance_score, CASE WHEN performance_score > 8 THEN 1 ELSE 0 END AS bonus_flag FROM employees WHERE salary BETWEEN 20000 AND 30000 AND years_service >= 1 AND performance_score > 8 GROUP BY name, salary, years_service, performance_score, bonus_flag ORDER BY bonus_flag DESC, years_service DESC, performance_score DESC, salary DESC;
+
+ANALISE QUALITATIVA (para ser preenchida):
+  Corretude (BASE):     [  ]/10
+  Corretude (250):      [  ]/10
+  Corretude (500):      [  ]/10
+  Otimizacao (BASE):    [  ]/10
+  Otimizacao (250):     [  ]/10
+  Otimizacao (500):     [  ]/10
+  Completude (BASE):    [  ]/10
+  Completude (250):     [  ]/10
+  Completude (500):     [  ]/10
+  Melhor solucao:       [           ]
+  Comentarios:          
+
+====================================================================================================
+
+
+CENARIO 10: EXISTS vs IN Optimization
+----------------------------------------------------------------------------------------------------
+Pergunta: Autores brasileiros que tem pelo menos um livro premiado depois de 2020
+
+BASE MODEL:
+Okay, so the user wants to find Brazilian authors who have at least one book awarded after 2020. Let me break this down.
+
+First, I need to understand the tables involved. The authors table has the country column, and the books table links authors to their books. The awards table connects books to awards, with a year. The user wants authors from Brazil (so country is 'Brazil') who have a book in awards after 2020.
+
+I should start by filtering the authors table to get only those with country = 'Brazil'. Then, I need to check the books they have. For each book, check if there's an award in the awards table with year >= 2021. If any such award exists, the author is included.
+
+Wait, but the awards table's year is a year, so maybe the book's year is the same as the award's year. The user said "after 2020", so
+
+CHECKPOINT-250:
+SELECT authors.name FROM authors INNER JOIN books ON authors.id = books.author_id INNER JOIN awards ON books.id = awards.book_id WHERE authors.country = 'Brazil' AND awards.year >= 2020 AND awards.award_name IN ('Premier') AND books.year >= 2020 GROUP BY authors.name ORDER BY authors.name ASC;
+
+CHECKPOINT-500:
+SELECT authors.name FROM authors INNER JOIN books ON authors.id = books.author_id INNER JOIN awards ON books.id = awards.book_id WHERE awards.award_name = 'Premier' AND awards.year > 2020 GROUP BY authors.id HAVING COUNT(*) > 0;
+
+ANALISE QUALITATIVA (para ser preenchida):
+  Corretude (BASE):     [  ]/10
+  Corretude (250):      [  ]/10
+  Corretude (500):      [  ]/10
+  Otimizacao (BASE):    [  ]/10
+  Otimizacao (250):     [  ]/10
+  Otimizacao (500):     [  ]/10
+  Completude (BASE):    [  ]/10
+  Completude (250):     [  ]/10
+  Completude (500):     [  ]/10
+  Melhor solucao:       [           ]
+  Comentarios:          
+
+====================================================================================================
+

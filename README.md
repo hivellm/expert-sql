@@ -154,6 +154,104 @@ Options:
 | Subqueries | 60% | 82% | +22% |
 | Window functions | 45% | 75% | +30% |
 
+## Testing
+
+> 📋 **See `TEST_SUMMARY.md` for complete test coverage details**
+
+### Comparison Tests (Base vs Expert)
+
+Validate that the expert outperforms the base model:
+
+```powershell
+# Run automated comparison tests
+.\test.ps1 -TestSuite comparison
+
+# Run interactive comparison with custom examples
+.\run_interactive_comparison.ps1
+```
+
+**Test Results**: See `COMPARISON_RESULTS.md` for detailed analysis.
+
+**Key Findings** (from latest test run):
+- ✅ **100% test pass rate** - Expert >= Base on all scenarios
+- ✅ **JOIN queries**: +12.5% improvement (87.5% → 100%)
+- ✅ **Aggregation**: +20% improvement (80% → 100%)
+- ✅ **Cleaner output**: Less repetition, more concise
+
+### Available Test Suites
+
+```powershell
+# Quick test - Basic comparison only
+.\test.ps1 -TestSuite comparison
+
+# Comprehensive test - 50+ SQL patterns
+.\test.ps1 -TestSuite comprehensive
+
+# Advanced test - Window functions, CTEs, complex patterns
+.\test.ps1 -TestSuite advanced
+
+# Run ALL test suites with detailed reporting
+.\run_all_tests.ps1
+
+# Quick mode (comparison only)
+.\run_all_tests.ps1 -QuickTest
+
+# Skip advanced tests (faster)
+.\run_all_tests.ps1 -SkipAdvanced
+```
+
+### Test Coverage
+
+The test suites cover **100+ different SQL scenarios**:
+
+**Basic Patterns** (test_comparison.py):
+- ✓ Simple SELECT with WHERE
+- ✓ COUNT aggregations
+- ✓ JOIN operations
+- ✓ GROUP BY aggregations
+- ✓ BETWEEN filtering
+
+**Comprehensive Patterns** (test_comprehensive.py):
+- ✓ Subqueries (WHERE, FROM, SELECT)
+- ✓ Multiple JOINs (3+ tables)
+- ✓ LEFT/RIGHT/OUTER JOINs
+- ✓ Multiple aggregations (AVG, SUM, COUNT, MIN, MAX)
+- ✓ HAVING clause
+- ✓ ORDER BY + LIMIT + OFFSET
+- ✓ DISTINCT and COUNT(DISTINCT)
+- ✓ CASE WHEN statements
+- ✓ NULL handling (IS NULL, IS NOT NULL, COALESCE)
+- ✓ Date filtering
+- ✓ String functions (LIKE, concatenation)
+- ✓ Complex filtering (IN, AND/OR combinations)
+
+**Advanced Patterns** (test_advanced.py):
+- ✓ Window functions (ROW_NUMBER, RANK, DENSE_RANK)
+- ✓ PARTITION BY
+- ✓ Running totals (SUM OVER)
+- ✓ Common Table Expressions (CTEs with WITH)
+- ✓ Multiple CTEs
+- ✓ Set operations (UNION, UNION ALL, INTERSECT)
+- ✓ Self-joins
+- ✓ GROUP BY multiple columns
+- ✓ Conditional aggregations
+- ✓ Correlated subqueries (EXISTS, NOT EXISTS)
+- ✓ Mathematical operations
+- ✓ Top-N per group queries
+
+### Performance Benchmarking
+
+```powershell
+# Benchmark inference speed and memory usage
+.\benchmark_performance.ps1
+
+# Run 50 iterations for more accurate results
+.\benchmark_performance.ps1 -Iterations 50
+
+# Show detailed output for each iteration
+.\benchmark_performance.ps1 -DetailedOutput
+```
+
 ## Usage
 
 ```bash

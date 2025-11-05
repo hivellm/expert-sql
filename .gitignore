@@ -18,6 +18,7 @@ logs/
 
 # Python cache
 __pycache__/
+.pytest_cache/
 *.pyc
 *.pyo
 *.pyd
@@ -51,3 +52,6 @@ desktop.ini
 !preprocess.py
 !README.md
 !.gitignore
+
+# Unsloth
+unsloth_compiled_cache
