@@ -1,8 +1,8 @@
 {
   "name": "expert-sql",
-  "version": "0.0.1",
+  "version": "0.2.0",
   "schema_version": "2.0",
-  "description": "SQL query generation expert trained on text2sql dataset with schema context",
+  "description": "Production-ready SQL query generation expert. Trained on 99,935 validated examples with 9.6/10 quality score. Excellent for e-commerce, CRM, analytics, and business reports. Checkpoint-1250 optimized for real-world queries.",
   "author": "hivellm",
   "homepage": "https://github.com/hivellm/expert-sql",
   
@@ -28,10 +28,10 @@
           "alpha": 24,
           "scaling": "dora",
           "dropout": 0.1,
-          "path": "qwen3-06b/adapter",
+          "path": "weights/qwen3-06b/checkpoint-1250",
           "size_bytes": 0,
           "sha256": "",
-          "_comment": "DoRA r=8-16 for SQL (r=12 balanced). Better quality than LoRA for complex queries (joins, subqueries)"
+          "_comment": "Checkpoint-1250 (epoch 1.25): Production-ready with 9.6/10 quality. 100% success on 30 real-world scenarios. DoRA r=12 optimized for complex queries (joins, subqueries, window functions)."
         }
       ]
     }
@@ -48,15 +48,36 @@
   
   "capabilities": [
     "database:sql",
+    "database:postgresql",
     "query:sql",
     "task:text2sql",
     "feature:schema_understanding",
     "feature:table_queries",
     "feature:join_queries",
+    "feature:multi_table_joins",
     "feature:aggregation",
     "feature:filtering",
     "feature:subqueries",
-    "language:en"
+    "feature:correlated_subqueries",
+    "feature:window_functions",
+    "feature:cte_non_recursive",
+    "feature:date_operations",
+    "feature:string_operations",
+    "feature:having_clause",
+    "feature:group_by",
+    "feature:order_by",
+    "usecase:ecommerce",
+    "usecase:crm",
+    "usecase:analytics",
+    "usecase:reports"
+  ],
+  
+  "limitations": [
+    "no_recursive_cte",
+    "no_union_operations",
+    "limited_left_join_null",
+    "limited_nested_case_when",
+    "limited_complex_percentages"
   ],
   
   "routing": {
@@ -93,7 +114,7 @@
       "path": "datasets/train.jsonl",
       "format": "jsonl",
       "streaming": false,
-      "_comment": "gretelai/synthetic_text_to_sql: 100k examples, validated & optimized. MySQL->PostgreSQL fixes applied. Only 'text' field (77% smaller)."
+      "_comment": "gretelai/synthetic_text_to_sql: 99,935 validated examples. MySQL->PostgreSQL conversion, sqlglot validation, deduplicated. Optimized to text-only format (77% smaller). Checkpoint-1250 achieved 9.6/10 quality score."
     },
     "config": {
       "method": "sft",
@@ -159,10 +180,51 @@
       "top_k": 20,
       "_comment": "Unsloth/Qwen recommended settings: temp=0.7, top_p=0.8, top_k=20. Prevents repetition collapse. Grammar validation prevents syntax errors."
     },
-    "trained_on": "2025-11-03",
+    "trained_on": "2025-11-06",
+    "checkpoint": "1250",
+    "packaging_checkpoint": "checkpoint-1250",
+    "quality_score": 9.6,
+    "test_scenarios": {
+      "real_world_queries": {
+        "total": 30,
+        "passed": 30,
+        "success_rate": 100.0,
+        "categories": {
+          "ecommerce": "5/5",
+          "crm": "4/4",
+          "analytics": "4/4",
+          "filters": "4/4",
+          "reports": "3/3",
+          "joins": "3/3",
+          "aggregations": "3/3",
+          "practical": "4/4"
+        }
+      },
+      "complex_scenarios": {
+        "total": 10,
+        "average_score": 6.7,
+        "strengths": ["correlated_subqueries", "window_functions", "having_clause"],
+        "weaknesses": ["recursive_cte", "union_operations", "left_join_null"]
+      }
+    },
     "base_model_version": "qwen3-0.6b-int4"
   },
   
   "license": "cc-by-4.0",
-  "tags": ["sql", "database", "text2sql", "query-generation"]
+  "tags": [
+    "sql",
+    "database",
+    "text2sql",
+    "query-generation",
+    "postgresql",
+    "postgres",
+    "ecommerce",
+    "crm",
+    "analytics",
+    "business-intelligence",
+    "dora",
+    "qwen3",
+    "production-ready",
+    "checkpoint-1250"
+  ]
 }

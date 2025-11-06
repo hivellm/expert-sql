@@ -28,19 +28,22 @@ Under the following terms:
 
 ---
 
-This license matches the source dataset license (b-mc2/sql-create-context) which is
-derived from WikiSQL and Spider datasets.
+This license matches the source dataset license (gretelai/synthetic_text_to_sql)
+which is licensed under Apache 2.0.
 
-Dataset Citations:
+Dataset Citation:
 
-WikiSQL:
-  Victor Zhong, Caiming Xiong, and Richard Socher. 2017.
-  "Seq2SQL: Generating Structured Queries from Natural Language using Reinforcement Learning"
-  CoRR abs/1709.00103
+Gretel Synthetic Text-to-SQL:
+  Gretel AI. 2024.
+  "Synthetic Text-to-SQL Dataset - 100k high-quality examples"
+  https://huggingface.co/datasets/gretelai/synthetic_text_to_sql
+  License: Apache 2.0
 
-Spider:
-  Tao Yu, Rui Zhang, Kai Yang, Michihiro Yasunaga, et al. 2018.
-  "Spider: A large-scale human-labeled dataset for complex and cross-domain
-  semantic parsing and text-to-sql task"
-  arXiv preprint arXiv:1809.08887
+Base Model Citation:
+
+Qwen3:
+  Qwen Team. 2024.
+  "Qwen3 Technical Report"
+  https://huggingface.co/Qwen/Qwen3-0.6B
+  License: Apache 2.0
 
