@@ -277,8 +277,8 @@ Key Features:
 | 🛠️ Practical | 4/4 (100%) | ✅ | Duplicates, unique emails, stock updates, inactive users |
 
 **By Difficulty:**
-- **Básico** (17/17): Simple SELECT, WHERE, ORDER BY, basic JOINs
-- **Intermediário** (13/13): Multi-table JOINs, subqueries, aggregations, window functions
+- **Basic** (17/17): Simple SELECT, WHERE, ORDER BY, basic JOINs
+- **Intermediate** (13/13): Multi-table JOINs, subqueries, aggregations, window functions
 
 **Overall:** 30/30 scenarios passed (100% success rate)
 
