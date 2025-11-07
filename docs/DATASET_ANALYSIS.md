@@ -1,16 +1,65 @@
-# Additional Dataset Analysis for SQL Expert
+# SQL Expert Dataset Analysis
 
 **Date:** 2025-01-XX  
-**Current Dataset:** gretelai/synthetic_text_to_sql (99,935 examples)  
-**Analysis Method:** Automated analysis of structure, complexity, and overlap
+**Current Dataset:** Multi-source dataset (51,256 examples after rebalancing)  
+**Analysis Method:** Automated analysis of structure, complexity, and distribution
+
+## Current Dataset Status
+
+**Total Examples:** 51,256 (after preprocessing, deduplication, and rebalancing)
+
+**Data Sources:**
+1. ✅ **gretelai/synthetic_text_to_sql** - Primary dataset from HuggingFace
+2. ✅ **Clinton/Text-to-sql-v1** - Integrated from HuggingFace
+3. ✅ **synthetic_fixes.jsonl** - Manual curated examples (283 examples)
+4. ✅ **bigcode/the-stack** - SQL code extracted, limited to 10,000 random samples
+
+**Processing Applied:**
+- Multi-dialect normalization (MySQL/SQLite→PostgreSQL)
+- SQL validation with sqlglot
+- Deduplication by question
+- Length filtering (10-2048 chars)
+- Command type rebalancing (SELECT reduced to 77%)
+
+## Current Distribution
+
+### SQL Command Types
+
+| Command | Count | Percentage |
+|---------|-------|------------|
+| SELECT | 39,467 | 77.00% |
+| INSERT | 3,882 | 7.57% |
+| DELETE | 3,295 | 6.43% |
+| UPDATE | 2,941 | 5.74% |
+| CREATE | 1,095 | 2.14% |
+| WITH (CTE) | 288 | 0.56% |
+| ALTER | 134 | 0.26% |
+| DROP | 98 | 0.19% |
+| Other | 56 | 0.11% |
+
+### Command Categories
+
+- **SELECT (read):** 39,467 (77.00%)
+- **INSERT/UPDATE/DELETE (write):** 10,118 (19.74%)
+- **CREATE/DROP/ALTER (DDL):** 1,327 (2.59%)
+- **WITH (CTE):** 288 (0.56%)
+- **Other:** 56 (0.11%)
+
+### Complexity Distribution
+
+- **Simple:** 26,556 (51.81%)
+- **Medium:** 21,861 (42.65%)
+- **Complex:** 2,786 (5.44%)
+- **Very Complex:** 53 (0.10%)
 
 ## Summary
 
-Analyzed three additional Text-to-SQL datasets to determine if they're worth integrating into the training dataset:
+This document analyzes additional Text-to-SQL datasets that were considered for integration:
 
-1. **philschmid/gretel-synthetic-text-to-sql** - ✅ **RECOMMENDED**
-2. **Clinton/Text-to-sql-v1** - ✅ **RECOMMENDED**
-3. **hoanghy/text-to-sql** - ⚠️ **CONSIDER** (has limitations)
+1. **philschmid/gretel-synthetic-text-to-sql** - ✅ **INTEGRATED** (same as gretelai)
+2. **Clinton/Text-to-sql-v1** - ✅ **INTEGRATED**
+3. **bigcode/the-stack** - ✅ **INTEGRATED** (10k random samples)
+4. **hoanghy/text-to-sql** - ⚠️ **NOT INTEGRATED** (missing schema)
 
 ---
 
@@ -139,7 +188,44 @@ Analyzed three additional Text-to-SQL datasets to determine if they're worth int
 
 ---
 
-## Dataset 3: hoanghy/text-to-sql
+## Dataset 3: bigcode/the-stack (SQL subset)
+
+**Source:** BigCode. 2024.  
+**License:** BigCode OpenRAIL-M (compatible with CC-BY-4.0)  
+**URL:** https://huggingface.co/datasets/bigcode/the-stack/tree/main/data
+
+### Statistics
+
+- **Total SQL Examples Found:** 216,180
+- **Used in Training:** 10,000 (random samples, limited for quality control)
+- **Extraction Method:** SQL code extracted from large-scale code dataset
+- **Has Schema:** Variable (extracted from context when available)
+
+### Integration Status
+
+✅ **INTEGRATED** - Limited to 10,000 random samples
+
+**Rationale:**
+- Large-scale code dataset with SQL samples across multiple programming languages
+- Quality concerns: Mixed quality, may pollute dataset if used in full
+- Solution: Limited to 10,000 random samples for diversity without quality degradation
+- Provides real-world SQL patterns from production codebases
+
+**Processing:**
+- Extracted via `scripts/download_the_stack_sql.py`
+- Filtered for SQL files (.sql, .sqlite, .db extensions)
+- Validated with sqlglot
+- Formatted to ChatML
+- Limited to 10k random samples before merge
+
+**Impact:**
+- Adds diversity from real-world codebases
+- Provides examples from various database systems
+- Limited sample size maintains dataset quality
+
+---
+
+## Dataset 4: hoanghy/text-to-sql
 
 **Source:** Multiple Text-to-SQL benchmarks  
 **License:** Unknown (check before use)  
@@ -215,123 +301,118 @@ Analyzed three additional Text-to-SQL datasets to determine if they're worth int
 
 ---
 
-## Final Recommendations
+## Integration Status Summary
 
-### Priority 1: Clinton/Text-to-sql-v1
+### ✅ Integrated Datasets
 
-**Action:** Integrate after license verification
+1. **gretelai/synthetic_text_to_sql**
+   - Status: ✅ Integrated
+   - Method: Direct download from HuggingFace
+   - Size: ~100k examples (before merge)
 
-**Why:**
-- Largest dataset (262k examples)
-- 100% schema coverage
-- Zero overlap
-- Good complexity mix
+2. **Clinton/Text-to-sql-v1**
+   - Status: ✅ Integrated
+   - Method: Direct download from HuggingFace
+   - Size: ~262k examples (before merge)
+   - Processing: SQLite→PostgreSQL conversion applied
 
-**Steps:**
-1. Verify license compatibility
-2. Convert SQLite → PostgreSQL syntax
-3. Filter by quality/source if needed
-4. Sample if too large (consider 50-100k subset)
-5. Integrate with current dataset
+3. **synthetic_fixes.jsonl**
+   - Status: ✅ Integrated
+   - Method: Loaded from local file
+   - Size: 283 examples
+   - Purpose: Manual examples targeting critical deficiencies
 
-**Expected Impact:**
-- Increase dataset size by ~2.6x
-- Add diversity from multiple sources
-- Improve coverage of complex queries
+4. **bigcode/the-stack**
+   - Status: ✅ Integrated (limited)
+   - Method: SQL extraction via `scripts/download_the_stack_sql.py`
+   - Size: 10,000 random samples (from 216,180 total)
+   - Rationale: Quality control - limited to avoid dataset pollution
 
----
+### ⚠️ Not Integrated
 
-### Priority 2: philschmid/gretel-synthetic-text-to-sql
-
-**Action:** Verify if different from current dataset
-
-**Why:**
-- Same source as current (gretelai fork)
-- May be identical to what we already have
-- If different, adds 100k examples with zero overlap
-
-**Steps:**
-1. Compare with current dataset (check if identical)
-2. If identical → Skip
-3. If different → Integrate (same format, easy integration)
-
-**Expected Impact:**
-- If different: +100k examples
-- If identical: No impact
+1. **hoanghy/text-to-sql**
+   - Status: ❌ Not integrated
+   - Reason: Missing schema (critical requirement)
+   - Alternative: Could extract JOIN patterns for synthetic generation
 
 ---
 
-### Priority 3: hoanghy/text-to-sql
+## Dataset Integration Status
 
-**Action:** NOT RECOMMENDED for direct integration
+**Current Dataset:** 51,256 examples (after preprocessing and rebalancing)
 
-**Why:**
-- Missing schema (critical requirement)
-- Small dataset (2k examples)
-- Would require significant preprocessing
+**Integration Results:**
+- ✅ **gretelai/synthetic_text_to_sql:** Integrated (primary source)
+- ✅ **Clinton/Text-to-sql-v1:** Integrated (from HuggingFace)
+- ✅ **synthetic_fixes.jsonl:** Integrated (283 manual examples)
+- ✅ **bigcode/the-stack:** Integrated (10,000 random samples, limited for quality)
 
-**Alternative Use:**
-- Extract complex JOIN patterns for synthetic generation
-- Use as reference for multi-table query examples
-- Create schema + query pairs manually for critical cases
+**Preprocessing Pipeline:**
+1. Load all datasets (gretelai, Clinton, synthetic_fixes, the-stack)
+2. Merge datasets
+3. Format to ChatML
+4. Validate SQL (optional, can be disabled)
+5. Filter by length (10-2048 chars)
+6. Deduplicate by question
+7. Rebalance command types (SELECT → 77%)
+8. Save optimized dataset
 
----
-
-## Integration Plan
-
-### Phase 1: License Verification
-
-1. Verify licenses for:
-   - Clinton/Text-to-sql-v1
-   - hoanghy/text-to-sql
-2. Ensure Apache 2.0 compatibility
-
-### Phase 2: Dataset Integration
-
-1. **Clinton/Text-to-sql-v1:**
-   - Load dataset
-   - Convert SQLite → PostgreSQL
-   - Format to ChatML
-   - Sample if needed (50-100k subset)
-   - Deduplicate against current dataset
-   - Add to training set
-
-2. **philschmid/gretel-synthetic-text-to-sql:**
-   - Compare with current dataset
-   - If different, integrate (same process as current)
-   - If identical, skip
-
-### Phase 3: Quality Assurance
-
-1. Validate SQL syntax (sqlglot)
-2. Check for duplicates
-3. Verify schema quality
-4. Test training with combined dataset
+**Rebalancing Applied:**
+- Before: SELECT = 90,129 (88.4%)
+- After: SELECT = 39,467 (77.0%)
+- Reduction: 101,919 → 51,256 examples
+- Goal: Better balance between SELECT and other command types
 
 ---
 
-## Expected Dataset Size After Integration
+## Dataset Files
 
-**Current:** 99,935 examples
+**Training Dataset:**
+- `datasets/train.jsonl` - 51,256 examples (final, rebalanced)
 
-**After Integration:**
-- **Clinton/Text-to-sql-v1:** +50,000-100,000 (sampled) = **149,935 - 199,935**
-- **philschmid/gretel-synthetic-text-to-sql:** +0-100,000 (if different) = **149,935 - 299,935**
+**Source Files:**
+- `datasets/synthetic_fixes.jsonl` - 283 manual examples
+- `datasets/the_stack_sql.jsonl` - 216,180 SQL examples (10k used randomly)
 
-**Total Potential:** ~150k - 300k examples
+**Documentation:**
+- `docs/dataset_distribution.png` - Distribution charts (PNG)
+- `docs/dataset_distribution.pdf` - Distribution charts (PDF)
 
----
+## Preprocessing Script
+
+The `preprocess.py` script automatically:
+1. Downloads datasets from HuggingFace (gretelai, Clinton)
+2. Loads local files (synthetic_fixes.jsonl, the_stack_sql.jsonl)
+3. Limits The Stack to 10,000 random samples
+4. Merges all datasets
+5. Preprocesses and validates SQL
+6. Deduplicates examples
+7. Rebalances command types (SELECT → 77%)
+8. Saves optimized dataset
+
+**Usage:**
+```bash
+python preprocess.py --output datasets --select-ratio 0.77
+```
 
 ## Notes
 
-- All datasets have **zero overlap** with current dataset (good diversity)
-- **Clinton/Text-to-sql-v1** is the most valuable addition (largest, has schema)
-- **hoanghy/text-to-sql** has excellent JOIN complexity but missing schema (not suitable for direct integration)
-- Consider **sampling** large datasets to avoid overfitting
-- Focus on **quality over quantity** - better to have 150k high-quality examples than 300k mixed-quality
+- ✅ **All primary datasets integrated** - gretelai, Clinton, synthetic_fixes, the-stack
+- ✅ **Rebalanced distribution** - SELECT reduced from 88% to 77% for better diversity
+- ✅ **Quality control** - The Stack limited to 10k random samples to avoid dataset pollution
+- ✅ **Multi-source diversity** - Examples from 4 different sources
+- ⚠️ **hoanghy/text-to-sql** not integrated - Missing schema (critical requirement)
+- 📊 **Distribution charts** available in `docs/dataset_distribution.png`
+
+**Dataset Quality:**
+- 51.81% simple queries (good baseline coverage)
+- 42.65% medium complexity (good for training)
+- 5.44% complex queries (advanced patterns)
+- 77% SELECT (read operations) - balanced with 23% write/DDL operations
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** 2025-01-XX
+**Document Version:** 2.0  
+**Last Updated:** 2025-01-XX  
+**Status:** All recommended datasets integrated, dataset rebalanced and optimized
 

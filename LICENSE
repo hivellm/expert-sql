@@ -32,34 +32,50 @@ This license matches the source dataset licenses, which are licensed under Apach
 
 Dataset Licenses:
 
-1. Gretel Synthetic Text-to-SQL:
+1. gretelai/synthetic_text_to_sql:
    - Source: Gretel AI. 2024.
-   - "Synthetic Text-to-SQL Dataset - 100k high-quality examples"
+   - "Synthetic Text-to-SQL Dataset - High-quality examples"
    - https://huggingface.co/datasets/gretelai/synthetic_text_to_sql
    - License: Apache 2.0
-   - Examples: 99,935
+   - Usage: Primary dataset source, used directly via HuggingFace
 
 2. Clinton/Text-to-sql-v1:
    - Source: Clinton. 2024.
    - "Text-to-SQL Dataset v1"
    - https://huggingface.co/datasets/Clinton/Text-to-sql-v1
    - License: Apache 2.0
-   - Examples: 47,145
+   - Usage: Integrated via scripts/integrate_clinton_dataset.py
 
-3. Synthetic Fixes (Manual):
+3. synthetic_fixes.jsonl:
    - Source: HiveLLM. 2025.
    - "Synthetic SQL examples targeting critical deficiencies"
+   - Location: datasets/synthetic_fixes.jsonl
    - Created for this work
    - License: CC-BY-4.0 (matches this work)
-   - Examples: 60
+   - Usage: Manually curated examples, loaded from local file
+
+4. bigcode/the-stack (SQL subset):
+   - Source: BigCode. 2024.
+   - "The Stack - Large-scale code dataset"
+   - https://huggingface.co/datasets/bigcode/the-stack/tree/main/data
+   - License: BigCode OpenRAIL-M (compatible with CC-BY-4.0)
+   - Usage: SQL code extracted via scripts/download_the_stack_sql.py, limited to 10,000 random samples for quality control
+   - Location: datasets/the_stack_sql.jsonl
 
 License Compatibility:
 All datasets are compatible with CC-BY-4.0:
-- Apache 2.0 datasets can be used under CC-BY-4.0 with attribution
-- Synthetic fixes are created for this work and use CC-BY-4.0
+- Apache 2.0 datasets (gretelai/synthetic_text_to_sql, Clinton/Text-to-sql-v1) can be used under CC-BY-4.0 with attribution
+- synthetic_fixes.jsonl is created for this work and uses CC-BY-4.0
+- BigCode OpenRAIL-M (the-stack) is compatible with CC-BY-4.0
+
+Dataset Processing:
+- gretelai/synthetic_text_to_sql: Used directly via HuggingFace datasets library
+- Clinton/Text-to-sql-v1: Integrated via scripts/integrate_clinton_dataset.py
+- synthetic_fixes.jsonl: Loaded from local file datasets/synthetic_fixes.jsonl
+- bigcode/the-stack: SQL code extracted via scripts/download_the_stack_sql.py, limited to 10,000 random samples, saved to datasets/the_stack_sql.jsonl
 
 Attribution:
-This work uses datasets from Gretel AI and Clinton, with manual synthetic examples created by HiveLLM.
+This work uses datasets from Gretel AI (gretelai/synthetic_text_to_sql), Clinton (Clinton/Text-to-sql-v1), and BigCode (bigcode/the-stack), with manual synthetic examples (synthetic_fixes.jsonl) created by HiveLLM.
 
 Base Model Citation:
 

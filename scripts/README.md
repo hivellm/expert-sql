@@ -4,6 +4,51 @@ Utility scripts for dataset analysis, validation, and testing.
 
 ## 📁 Dataset Processing & Analysis
 
+### `download_the_stack_sql.py`
+Downloads SQL code from bigcode/the-stack dataset.
+
+**Requirements**:
+- HuggingFace token (get from https://huggingface.co/settings/tokens)
+- Accept dataset terms at https://huggingface.co/datasets/bigcode/the-stack
+
+```bash
+# Set token
+export HF_TOKEN=your_token_here
+
+# Download SQL files (default: 10,000 files)
+python scripts/download_the_stack_sql.py --limit 10000
+
+# Custom output path
+python scripts/download_the_stack_sql.py --limit 50000 --output datasets/the_stack_sql.jsonl
+```
+
+**Output**: `datasets/the_stack_sql.jsonl`
+
+---
+
+### `merge_the_stack_sql.py`
+Merges the-stack SQL dataset with current training dataset.
+
+```bash
+# Merge with backup
+python scripts/merge_the_stack_sql.py --backup
+
+# Custom paths
+python scripts/merge_the_stack_sql.py \
+  --the_stack_file datasets/the_stack_sql.jsonl \
+  --current_file datasets/train.jsonl \
+  --output datasets/train.jsonl \
+  --backup
+```
+
+**Features**:
+- Removes duplicates based on SQL query and question
+- Validates SQL syntax with sqlglot
+- Preserves existing dataset
+- Creates backup automatically
+
+---
+
 ### `validate_dataset.py`
 Validates processed dataset format and integrity.
 
@@ -91,17 +136,28 @@ python scripts/qualitative_analysis.py
 
 ## 🚀 Quick Start
 
-**1. Validate dataset**:
+**1. Download the-stack SQL data**:
+```bash
+export HF_TOKEN=your_token_here
+python scripts/download_the_stack_sql.py --limit 50000
+```
+
+**2. Merge with current dataset**:
+```bash
+python scripts/merge_the_stack_sql.py --backup
+```
+
+**3. Validate merged dataset**:
 ```bash
 python scripts/validate_dataset.py
 ```
 
-**2. Analyze command types**:
+**4. Analyze command types**:
 ```bash
 python scripts/analyze_sql_types.py
 ```
 
-**3. Test model quality**:
+**5. Test model quality**:
 ```bash
 python scripts/qualitative_analysis.py
 ```

@@ -30,7 +30,7 @@ expert-cli chat --experts sql
 - ✅ **Unsloth integration** - 2x faster training, 70% less VRAM
 - ✅ **SQL validation** via sqlglot for dataset quality
 - ✅ **Windows optimized** with memory safety and CUDA support
-- ✅ **147,140 validated examples** from multiple sources (gretelai/synthetic_text_to_sql, Clinton/Text-to-sql-v1, synthetic fixes)
+- ✅ **Validated examples** from multiple high-quality sources (gretelai/synthetic_text_to_sql, Clinton/Text-to-sql-v1, synthetic fixes)
 - ✅ **Production-ready** - Checkpoint 1250 (9.6/10 quality, 100% real-world success)
 
 ## What It Can Do ✅
@@ -115,10 +115,10 @@ cd F:/Node/hivellm/expert/experts/expert-sql
 
 ### Dataset Preprocessing (ALREADY DONE)
 
-**Current Dataset**: Multi-source (147,140 examples)
-- ✅ **gretelai/synthetic_text_to_sql**: 99,935 examples
-- ✅ **Clinton/Text-to-sql-v1**: 47,145 examples
-- ✅ **synthetic_fixes (manual)**: 60 examples (targeting critical deficiencies)
+**Current Dataset**: Multi-source
+- ✅ **gretelai/synthetic_text_to_sql**
+- ✅ **Clinton/Text-to-sql-v1**
+- ✅ **synthetic_fixes (manual)** (targeting critical deficiencies)
 - ✅ Pre-processed with SQL dialect normalization
 - ✅ Validated with sqlglot
 - ✅ Deduplicated by question (2,855 duplicates removed)
@@ -645,27 +645,30 @@ print(sql)
 
 ## Dataset
 
-### Sources: Multi-dataset (147,140 examples)
+### Sources: Multi-dataset
 
 **Primary Sources:**
 
-1. **gretelai/synthetic_text_to_sql** (99,935 examples)
+1. **gretelai/synthetic_text_to_sql**
    - High-quality synthetic SQL generation
    - MySQL→SQL dialect conversion applied
    - Validated with sqlglot (99.93% valid)
 
-2. **Clinton/Text-to-sql-v1** (47,145 examples)
+2. **Clinton/Text-to-sql-v1**
    - Large-scale text-to-SQL dataset
    - SQLite→SQL dialect conversion applied
    - Schema-aware queries
 
-3. **synthetic_fixes (manual)** (60 examples)
+3. **synthetic_fixes (manual)**
    - Manually curated examples targeting critical deficiencies
    - Focuses on: SQL date syntax (DATE_TRUNC), window functions, NOT EXISTS, CTEs, multi-table JOINs
    - Created to address identified weaknesses
 
+**Additional Data Sources:**
+- **[bigcode/the-stack](https://huggingface.co/datasets/bigcode/the-stack/tree/main/data)** - Large-scale code dataset with SQL samples across multiple programming languages and database systems
+
 **Combined Dataset:**
-- **Total**: 147,140 validated training examples
+- **Validated training examples** from multiple high-quality sources
 - **Tasks**: Text-to-SQL with schema context
 - **Languages**: English (Portuguese filtered out)
 - **Dialect**: SQL (normalized from PostgreSQL, MySQL, SQLite)
@@ -698,8 +701,8 @@ print(sql)
 ### Validation & Testing
 
 **Dataset Quality:**
-- ✅ 147,140 total examples from 3 sources
-- ✅ 2,855 duplicates removed during integration
+- ✅ Multiple high-quality sources combined
+- ✅ Duplicates removed during integration
 - ✅ Multi-dialect normalization (MySQL/SQLite→SQL)
 - ✅ English-only instructions (Portuguese filtered)
 - ✅ Consistent ChatML formatting
@@ -758,18 +761,18 @@ If you see encoding errors:
 ### v0.3.0 (Current - Production Ready) - 2025-01-XX
 
 **Major Improvements:**
-- ✅ **Expanded dataset** - 147,140 examples from 3 sources (47% increase)
-- ✅ **Clinton/Text-to-sql-v1 integration** - Added 47,145 high-quality examples
-- ✅ **Synthetic fixes dataset** - 60 manually curated examples targeting critical deficiencies
+- ✅ **Expanded dataset** - Multiple sources integrated
+- ✅ **Clinton/Text-to-sql-v1 integration** - Added high-quality examples
+- ✅ **Synthetic fixes dataset** - Manually curated examples targeting critical deficiencies
 - ✅ **SQL dialect normalization** - Changed from "postgres" to "sql" for broader compatibility
 - ✅ **Language filtering** - English-only dataset (Portuguese removed)
 - ✅ **Improved deduplication** - 2,855 duplicates removed during integration
 
 **Training Results:**
-- Dataset: Multi-source (147,140 examples)
-  - gretelai/synthetic_text_to_sql: 99,935 examples
-  - Clinton/Text-to-sql-v1: 47,145 examples
-  - synthetic_fixes: 60 examples
+- Dataset: Multi-source
+  - gretelai/synthetic_text_to_sql
+  - Clinton/Text-to-sql-v1
+  - synthetic_fixes
 - Training method: DoRA r=12 + Unsloth (2x faster, 70% less VRAM)
 - Quality score: **9.6/10** on real-world benchmark (checkpoint-1250)
 - Checkpoint evolution tested: 750 → 1000 → **1250 (Best)** → 1500 (degradation)
@@ -787,7 +790,7 @@ If you see encoding errors:
 - ✅ **Production validation** - Tested with real extraction and inference
 
 **Training Results:**
-- Dataset: gretelai/synthetic_text_to_sql (99,935 examples)
+- Dataset: gretelai/synthetic_text_to_sql
 - Training method: DoRA r=12 + Unsloth (2x faster, 70% less VRAM)
 - Quality score: **9.6/10** on real-world benchmark
 - Checkpoint evolution tested: 750 → 1000 → **1250 (Best)** → 1500 (degradation)
@@ -823,9 +826,10 @@ If you see encoding errors:
 
 - **Base Model**: Qwen/Qwen3-0.6B
 - **Datasets**: 
-  - gretelai/synthetic_text_to_sql (99,935 examples)
-  - Clinton/Text-to-sql-v1 (47,145 examples)
-  - synthetic_fixes (60 examples, manually created)
+  - gretelai/synthetic_text_to_sql
+  - Clinton/Text-to-sql-v1
+  - synthetic_fixes (manually created)
+  - [bigcode/the-stack](https://huggingface.co/datasets/bigcode/the-stack/tree/main/data) - Large-scale code dataset
 - **Training**: Unsloth (2x speedup)
 - **Validation**: sqlglot (SQL parsing)
 - **Framework**: HuggingFace Transformers + PEFT + TRL

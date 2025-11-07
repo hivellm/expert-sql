@@ -23,11 +23,23 @@ Usage:
 import argparse
 import json
 import re
+import warnings
+import sys
+import io
+import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datasets import load_dataset, Dataset, DatasetDict
 from transformers import AutoTokenizer
 import gc
+
+# Suppress all warnings globally
+warnings.filterwarnings("ignore")
+
+# Suppress sqlglot logging
+logging.getLogger("sqlglot").setLevel(logging.ERROR)
+logging.getLogger("sqlglot.parser").setLevel(logging.ERROR)
+logging.getLogger("sqlglot.tokenizer").setLevel(logging.ERROR)
 
 # SQL validation
 try:
@@ -227,6 +239,131 @@ def format_example(
     return text
 
 
+def detect_sql_type(sql: str) -> str:
+    """Detect SQL command type from SQL query."""
+    sql_upper = sql.upper().strip()
+    
+    # Remove comments and whitespace
+    sql_upper = re.sub(r'--.*', '', sql_upper)
+    sql_upper = re.sub(r'/\*.*?\*/', '', sql_upper, flags=re.DOTALL)
+    sql_upper = sql_upper.strip()
+    
+    if not sql_upper:
+        return "EMPTY"
+    
+    # Check for CTE first (WITH clause)
+    if sql_upper.startswith('WITH'):
+        return "WITH (CTE)"
+    
+    # Check main command types
+    if sql_upper.startswith('SELECT'):
+        return "SELECT"
+    elif sql_upper.startswith('INSERT'):
+        return "INSERT"
+    elif sql_upper.startswith('UPDATE'):
+        return "UPDATE"
+    elif sql_upper.startswith('DELETE'):
+        return "DELETE"
+    elif sql_upper.startswith('CREATE'):
+        return "CREATE"
+    elif sql_upper.startswith('DROP'):
+        return "DROP"
+    elif sql_upper.startswith('ALTER'):
+        return "ALTER"
+    elif sql_upper.startswith('TRUNCATE'):
+        return "TRUNCATE"
+    else:
+        return "OTHER"
+
+
+def extract_sql_from_chatml(text: str) -> str:
+    """Extract SQL query from ChatML text."""
+    # Try standard ChatML format
+    match = re.search(r'<\|assistant\|>\s*\n(.*?)\n<\|end\|>', text, re.DOTALL)
+    if match:
+        sql = match.group(1).strip()
+        if sql:
+            return sql
+    
+    # Try without newline after assistant tag
+    match = re.search(r'<\|assistant\|>(.*?)<\|end\|>', text, re.DOTALL)
+    if match:
+        sql = match.group(1).strip()
+        if sql:
+            return sql
+    
+    # Try to find SQL-like content after assistant tag (fallback)
+    match = re.search(r'<\|assistant\|>(.*)', text, re.DOTALL)
+    if match:
+        sql = match.group(1).strip()
+        sql = re.sub(r'<\|end\|>.*', '', sql, flags=re.DOTALL).strip()
+        if sql and (sql.upper().startswith('SELECT') or sql.upper().startswith('WITH') or 
+                    sql.upper().startswith('INSERT') or sql.upper().startswith('UPDATE') or
+                    sql.upper().startswith('DELETE') or sql.upper().startswith('CREATE')):
+            return sql
+    
+    return ""
+
+
+def rebalance_sql_types(examples: List[Dict[str, Any]], target_select_ratio: float = 0.77) -> List[Dict[str, Any]]:
+    """
+    Rebalance SQL command types by reducing SELECT examples.
+    
+    Args:
+        examples: List of examples with 'text' field
+        target_select_ratio: Target ratio for SELECT (default: 0.77 = 77%)
+    
+    Returns:
+        Rebalanced list of examples
+    """
+    import random
+    from collections import defaultdict
+    
+    # Categorize examples
+    examples_by_type = defaultdict(list)
+    
+    for example in examples:
+        text = example.get("text", "")
+        if not text:
+            continue
+        
+        sql = extract_sql_from_chatml(text)
+        if not sql:
+            continue
+        
+        sql_type = detect_sql_type(sql)
+        examples_by_type[sql_type].append(example)
+    
+    # Count non-SELECT examples
+    select_examples = examples_by_type.get("SELECT", [])
+    non_select_examples = []
+    
+    for sql_type, ex_list in examples_by_type.items():
+        if sql_type != "SELECT":
+            non_select_examples.extend(ex_list)
+    
+    non_select_count = len(non_select_examples)
+    
+    # Calculate target SELECT count
+    if non_select_count > 0:
+        target_select_count = int(non_select_count * (target_select_ratio / (1.0 - target_select_ratio)))
+        target_select_count = min(target_select_count, len(select_examples))
+    else:
+        target_select_count = len(select_examples)
+    
+    # Randomly sample SELECT examples
+    random.seed(42)  # For reproducibility
+    selected_select = random.sample(select_examples, target_select_count)
+    
+    # Combine all examples
+    rebalanced = selected_select + non_select_examples
+    
+    # Shuffle to mix types
+    random.shuffle(rebalanced)
+    
+    return rebalanced
+
+
 def preprocess_dataset(
     dataset: Dataset,
     dialect: str = "postgres",
@@ -234,7 +371,9 @@ def preprocess_dataset(
     deduplicate: bool = True,
     min_length: int = 10,
     max_length: int = 2048,
-    validate_sql: bool = True
+    validate_sql: bool = True,
+    rebalance: bool = True,
+    target_select_ratio: float = 0.77
 ) -> Dataset:
     """
     Preprocess entire dataset:
@@ -243,8 +382,9 @@ def preprocess_dataset(
     3. Add 'text' field for SFTTrainer
     4. Deduplicate if requested
     5. Filter by length and validity
+    6. Rebalance SQL command types if requested (reduces SELECT to target ratio)
     """
-    print(f"[1/5] Formatting and validating {len(dataset)} examples...")
+    print(f"[1/6] Formatting and validating {len(dataset)} examples...")
     if validate_sql and SQL_VALIDATION_AVAILABLE:
         print("      SQL validation: ENABLED (fixing MySQL->PostgreSQL)")
     else:
@@ -255,7 +395,41 @@ def preprocess_dataset(
     def process_example(example):
         nonlocal invalid_count
         
-        # Support both formats - extract fields FIRST
+        # Check if already in ChatML format (has "text" field)
+        if "text" in example and example["text"]:
+            text = example["text"]
+            # Extract question from ChatML for deduplication
+            question_match = re.search(r'<\|user\|>\s*\n(.*?)\n<\|end\|>', text, re.DOTALL)
+            if question_match:
+                question = question_match.group(1).strip()
+            else:
+                # Fallback: extract from user tag without newline
+                question_match = re.search(r'<\|user\|>(.*?)<\|end\|>', text, re.DOTALL)
+                if question_match:
+                    question = question_match.group(1).strip()
+                else:
+                    question = text[:100]  # Fallback: use first 100 chars
+            
+            # Validate SQL if requested (extract from assistant tag)
+            if validate_sql:
+                sql = extract_sql_from_chatml(text)
+                if sql:
+                    fixed_sql = validate_postgres_sql(sql)
+                    if fixed_sql is None:
+                        invalid_count += 1
+                        return {"text": "", "question": question, "valid": False}
+                    # Replace SQL in text if it was fixed
+                    if fixed_sql != sql:
+                        text = re.sub(
+                            r'(<\|assistant\|>\s*\n)(.*?)(\n<\|end\|>)',
+                            lambda m: f"{m.group(1)}{fixed_sql}{m.group(3)}",
+                            text,
+                            flags=re.DOTALL
+                        )
+            
+            return {"text": text, "question": question, "valid": True}
+        
+        # Original formats - b-mc2 and gretelai
         schema = example.get("context") or example.get("sql_context", "")
         question = example.get("question") or example.get("sql_prompt", "")
         answer = example.get("answer") or example.get("sql", "")
@@ -275,21 +449,21 @@ def preprocess_dataset(
     
     # Filter out invalid examples FIRST
     if validate_sql:
-        print(f"[2/5] Removing invalid SQL examples...")
+        print(f"[2/6] Removing invalid SQL examples...")
         dataset = dataset.filter(lambda x: x.get("valid", True), num_proc=4)
         if invalid_count > 0:
             print(f"      Removed {invalid_count} invalid SQL examples")
     else:
-        print(f"[2/5] Skipping SQL validation")
+        print(f"[2/6] Skipping SQL validation")
     
-    print(f"[3/5] Filtering by length ({min_length}-{max_length} chars)...")
+    print(f"[3/6] Filtering by length ({min_length}-{max_length} chars)...")
     dataset = dataset.filter(
         lambda x: min_length <= len(x.get("text", "")) <= max_length,
         num_proc=4
     )
     
     if deduplicate:
-        print(f"[4/5] Deduplicating...")
+        print(f"[4/6] Deduplicating...")
         # Deduplicate by question (preserve unique questions)
         seen = set()
         def is_unique(example):
@@ -301,13 +475,64 @@ def preprocess_dataset(
         
         dataset = dataset.filter(is_unique)
     else:
-        print(f"[4/5] Skipping deduplication")
+        print(f"[4/6] Skipping deduplication")
+    
+    # Rebalance SQL command types if requested
+    if rebalance and len(dataset) > 0:
+        print(f"[5/6] Rebalancing SQL command types (target SELECT ratio: {target_select_ratio*100:.1f}%)...")
+        # Convert to list for rebalancing
+        examples_list = [{"text": ex["text"], "question": ex.get("question", "")} for ex in dataset]
+        
+        if len(examples_list) == 0:
+            print(f"      No examples to rebalance")
+        else:
+            rebalanced_list = rebalance_sql_types(examples_list, target_select_ratio)
+            
+            # Count types before and after
+            from collections import Counter
+            before_types = Counter()
+            after_types = Counter()
+            
+            for ex in examples_list:
+                sql = extract_sql_from_chatml(ex["text"])
+                sql_type = detect_sql_type(sql)
+                before_types[sql_type] += 1
+            
+            for ex in rebalanced_list:
+                sql = extract_sql_from_chatml(ex["text"])
+                sql_type = detect_sql_type(sql)
+                after_types[sql_type] += 1
+            
+            if len(examples_list) > 0:
+                print(f"      Before: SELECT={before_types.get('SELECT', 0):,} ({before_types.get('SELECT', 0)/len(examples_list)*100:.1f}%)")
+            if len(rebalanced_list) > 0:
+                print(f"      After:  SELECT={after_types.get('SELECT', 0):,} ({after_types.get('SELECT', 0)/len(rebalanced_list)*100:.1f}%)")
+            print(f"      Reduction: {len(examples_list):,} -> {len(rebalanced_list):,} examples")
+            
+            # Convert back to Dataset
+            from datasets import Dataset as HFDataset
+            dataset = HFDataset.from_list([{"text": ex["text"], "question": ex.get("question", "")} for ex in rebalanced_list])
+    else:
+        if not rebalance:
+            print(f"[5/6] Skipping rebalancing")
+        else:
+            print(f"[5/6] Skipping rebalancing (no examples)")
     
     # NOW remove the question field (keep only text)
-    print(f"[4.5/5] Optimizing - keeping only 'text' field...")
-    dataset = dataset.map(lambda x: {"text": x["text"]}, num_proc=4, remove_columns=["question", "valid"])
+    print(f"[6/6] Optimizing - keeping only 'text' field...")
+    # Check which columns exist before removing
+    columns_to_remove = []
+    if "question" in dataset.column_names:
+        columns_to_remove.append("question")
+    if "valid" in dataset.column_names:
+        columns_to_remove.append("valid")
     
-    print(f"[5/5] Final dataset size: {len(dataset)} examples")
+    if columns_to_remove:
+        dataset = dataset.map(lambda x: {"text": x["text"]}, num_proc=4, remove_columns=columns_to_remove)
+    else:
+        dataset = dataset.map(lambda x: {"text": x["text"]}, num_proc=4)
+    
+    print(f"Final dataset size: {len(dataset)} examples")
     if validate_sql and invalid_count > 0:
         print(f"      Quality improvement: {invalid_count} invalid SQL examples removed")
         print(f"      Success rate: {len(dataset)/(len(dataset)+invalid_count)*100:.1f}%")
@@ -394,8 +619,26 @@ def main():
     parser.add_argument(
         "--dataset",
         type=str,
-        default="gretelai/synthetic_text_to_sql",
-        help="HuggingFace dataset path (default: gretelai/synthetic_text_to_sql)"
+        default=None,
+        help="HuggingFace dataset path or local JSONL file (optional, defaults to all project datasets)"
+    )
+    parser.add_argument(
+        "--the-stack",
+        type=str,
+        default="datasets/the_stack_sql.jsonl",
+        help="Path to The Stack SQL JSONL file (will limit to 10k random samples, default: datasets/the_stack_sql.jsonl)"
+    )
+    parser.add_argument(
+        "--synthetic-fixes",
+        type=str,
+        default="datasets/synthetic_fixes.jsonl",
+        help="Path to synthetic fixes JSONL file (default: datasets/synthetic_fixes.jsonl)"
+    )
+    parser.add_argument(
+        "--use-all-sources",
+        action="store_true",
+        default=True,
+        help="Use all project datasets: gretelai/synthetic_text_to_sql, Clinton/Text-to-sql-v1, synthetic_fixes.jsonl, and the-stack (default: enabled)"
     )
     parser.add_argument(
         "--output",
@@ -456,6 +699,17 @@ def main():
         action="store_true",
         help="Skip SQL validation and fixing (not recommended)"
     )
+    parser.add_argument(
+        "--no-rebalance",
+        action="store_true",
+        help="Skip SQL command type rebalancing (default: enabled, reduces SELECT to ~77%)"
+    )
+    parser.add_argument(
+        "--select-ratio",
+        type=float,
+        default=0.77,
+        help="Target SELECT ratio for rebalancing (default: 0.77 = 77 percent)"
+    )
     
     args = parser.parse_args()
     
@@ -467,6 +721,7 @@ def main():
     print(f"Format: {args.format}")
     print(f"Output: {args.output}")
     print(f"SQL Validation: {'DISABLED' if args.no_validate_sql else 'ENABLED (MySQL->PostgreSQL fix)'}")
+    print(f"Rebalancing: {'DISABLED' if args.no_rebalance else f'ENABLED (target SELECT: {args.select_ratio*100:.1f}%)'}")
     if args.tokenize:
         print(f"Tokenize: YES (model: {args.model})")
         print(f"Seq Length: {args.seq_length}")
@@ -481,10 +736,155 @@ def main():
         print("Continuing without SQL validation...")
         print()
     
-    # Load dataset
-    print(f"Loading dataset: {args.dataset}...")
-    dataset = load_dataset(args.dataset, split="train")
-    print(f"Loaded {len(dataset)} examples")
+    # Load all project datasets
+    datasets_to_merge = []
+    
+    if args.use_all_sources and not args.dataset:
+        # Load all project datasets automatically
+        print("Loading all project datasets...")
+        print()
+        
+        # 1. Load gretelai/synthetic_text_to_sql
+        print("[1/4] Loading gretelai/synthetic_text_to_sql from HuggingFace...")
+        try:
+            gretel_dataset = load_dataset("gretelai/synthetic_text_to_sql", split="train")
+            datasets_to_merge.append(gretel_dataset)
+            print(f"  Loaded {len(gretel_dataset):,} examples")
+        except Exception as e:
+            print(f"  [WARNING] Failed to load gretelai/synthetic_text_to_sql: {e}")
+        
+        # 2. Load Clinton/Text-to-sql-v1
+        print("\n[2/4] Loading Clinton/Text-to-sql-v1 from HuggingFace...")
+        try:
+            clinton_dataset = load_dataset("Clinton/Text-to-sql-v1", split="train")
+            datasets_to_merge.append(clinton_dataset)
+            print(f"  Loaded {len(clinton_dataset):,} examples")
+        except Exception as e:
+            print(f"  [WARNING] Failed to load Clinton/Text-to-sql-v1: {e}")
+        
+        # 3. Load synthetic_fixes.jsonl
+        print(f"\n[3/4] Loading synthetic_fixes.jsonl: {args.synthetic_fixes}...")
+        synthetic_fixes_path = Path(args.synthetic_fixes)
+        if not synthetic_fixes_path.is_absolute():
+            synthetic_fixes_path = Path.cwd() / synthetic_fixes_path
+        if synthetic_fixes_path.exists() and synthetic_fixes_path.is_file():
+            import json
+            examples = []
+            with open(synthetic_fixes_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    try:
+                        examples.append(json.loads(line.strip()))
+                    except:
+                        continue
+            from datasets import Dataset as HFDataset
+            synthetic_dataset = HFDataset.from_list(examples)
+            datasets_to_merge.append(synthetic_dataset)
+            print(f"  Loaded {len(synthetic_dataset):,} examples")
+        else:
+            print(f"  [WARNING] File not found: {synthetic_fixes_path}")
+        
+        # 4. Load The Stack SQL (limited to 10k)
+        print(f"\n[4/4] Loading The Stack SQL: {args.the_stack}...")
+        the_stack_path = Path(args.the_stack)
+        if not the_stack_path.is_absolute():
+            the_stack_path = Path.cwd() / the_stack_path
+        if the_stack_path.exists() and the_stack_path.is_file():
+            import json
+            import random
+            examples = []
+            with open(the_stack_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    try:
+                        examples.append(json.loads(line.strip()))
+                    except:
+                        continue
+            
+            # Limit to 10k random samples
+            if len(examples) > 10000:
+                print(f"  Limiting to 10,000 random samples (from {len(examples):,} total)")
+                random.seed(42)
+                examples = random.sample(examples, 10000)
+                print(f"  Selected {len(examples):,} random samples")
+            else:
+                print(f"  Loaded {len(examples):,} examples")
+            
+            from datasets import Dataset as HFDataset
+            the_stack_dataset = HFDataset.from_list(examples)
+            datasets_to_merge.append(the_stack_dataset)
+            print(f"  Added {len(the_stack_dataset):,} The Stack examples")
+        else:
+            print(f"  [WARNING] File not found: {the_stack_path}")
+    
+    elif args.dataset:
+        # Load single dataset (backward compatibility)
+        dataset_path = Path(args.dataset)
+        if not dataset_path.is_absolute():
+            dataset_path = Path.cwd() / dataset_path
+        if dataset_path.exists() and dataset_path.is_file():
+            print(f"Loading local JSONL file: {args.dataset}...")
+            import json
+            examples = []
+            with open(args.dataset, 'r', encoding='utf-8') as f:
+                for line in f:
+                    try:
+                        examples.append(json.loads(line.strip()))
+                    except:
+                        continue
+            from datasets import Dataset as HFDataset
+            dataset = HFDataset.from_list(examples)
+            print(f"Loaded {len(dataset)} examples")
+            datasets_to_merge.append(dataset)
+        else:
+            print(f"Loading HuggingFace dataset: {args.dataset}...")
+            dataset = load_dataset(args.dataset, split="train")
+            print(f"Loaded {len(dataset)} examples")
+            datasets_to_merge.append(dataset)
+        
+        # Optionally add The Stack if provided
+        if args.the_stack:
+            the_stack_path = Path(args.the_stack)
+            if not the_stack_path.is_absolute():
+                the_stack_path = Path.cwd() / the_stack_path
+            if the_stack_path.exists() and the_stack_path.is_file():
+                print(f"\nLoading The Stack SQL: {args.the_stack}...")
+                import json
+                import random
+                examples = []
+                with open(the_stack_path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        try:
+                            examples.append(json.loads(line.strip()))
+                        except:
+                            continue
+                
+                if len(examples) > 10000:
+                    print(f"  Limiting to 10,000 random samples (from {len(examples):,} total)")
+                    random.seed(42)
+                    examples = random.sample(examples, 10000)
+                    print(f"  Selected {len(examples):,} random samples")
+                else:
+                    print(f"  Loaded {len(examples):,} examples")
+                
+                from datasets import Dataset as HFDataset
+                the_stack_dataset = HFDataset.from_list(examples)
+                datasets_to_merge.append(the_stack_dataset)
+                print(f"  Added {len(the_stack_dataset):,} The Stack examples")
+    
+    if not datasets_to_merge:
+        print("[ERROR] No datasets loaded!")
+        return
+    
+    # Merge all datasets
+    if len(datasets_to_merge) > 1:
+        print(f"\n{'='*70}")
+        print(f"Merging {len(datasets_to_merge)} datasets...")
+        from datasets import concatenate_datasets
+        dataset = concatenate_datasets(datasets_to_merge)
+        print(f"Total examples after merge: {len(dataset):,}")
+        print(f"{'='*70}")
+    else:
+        dataset = datasets_to_merge[0]
+    
     print()
     
     # Preprocess
@@ -495,7 +895,9 @@ def main():
         deduplicate=not args.no_deduplicate,
         min_length=args.min_length,
         max_length=args.max_length,
-        validate_sql=not args.no_validate_sql
+        validate_sql=not args.no_validate_sql,
+        rebalance=not args.no_rebalance,
+        target_select_ratio=args.select_ratio
     )
     
     # Free memory
