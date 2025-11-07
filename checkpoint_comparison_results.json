@@ -1,0 +1,204 @@
+{
+  "expert": "expert-sql",
+  "base_model": "F:/Node/hivellm/expert/models/Qwen3-0.6B",
+  "checkpoints_tested": [
+    250
+  ],
+  "device": "cuda",
+  "test_config": {
+    "max_new_tokens": 200,
+    "temperature": 0.7,
+    "top_p": 0.8,
+    "top_k": 20,
+    "do_sample": true
+  },
+  "results": [
+    {
+      "test_id": "select_001",
+      "category": "basic_select",
+      "expected_type": "sql",
+      "system_prompt": "Dialect: sql\nSchema:\nCREATE TABLE employees (id INT, name VARCHAR, salary DECIMAL)",
+      "user_prompt": "List all employees",
+      "base_output": "<think>\nOkay, the user wants me to list all employees from the given schema. Let me check the schema again. The table is called employees, and it has columns id, name, and salary. The user didn't specify any particular filter, so I should just return all the rows.\n\nWait, the user mentioned \"list all employees,\" so I need to write a SQL query that selects all employees. The basic structure would be SELECT * FROM employees; but maybe they want the actual data in a specific format. However, since the user hasn't provided any additional details, like sorting or filtering, I should stick to the standard SELECT statement.\n\nI should make sure there are no typos in the table name or column names. The schema says id, name, salary. So the query should be correct. Let me double-check the syntax. Yes, SELECT * FROM employees; should work. The user might be expecting that as the answer. But maybe they want the data in a specific format",
+      "checkpoint_outputs": {
+        "250": "<think>\nSELECT id, name, salary FROM employees;\n</think>\n\nSELECT id, name, salary FROM employees;"
+      }
+    },
+    {
+      "test_id": "select_002",
+      "category": "where_clause",
+      "expected_type": "sql",
+      "system_prompt": "Dialect: sql\nSchema:\nCREATE TABLE products (id INT, name VARCHAR, price DECIMAL)",
+      "user_prompt": "Find products with price less than 50",
+      "base_output": "<think>\nOkay, the user wants to find products with a price less than 50. Let me check the schema they provided. The table is called products, and it has columns id, name, and price. The price is a DECIMAL type, which is a numeric type. So the query should select the id and name where the price is less than 50. \n\nWait, how do I structure the WHERE clause here? The standard SQL syntax would be SELECT * FROM products WHERE price < 50. That makes sense. I should make sure that the price is compared correctly. Since DECIMAL can handle numbers up to 15 digits, it's safe to use that. \n\nI don't see any other conditions or constraints mentioned, so this query should work. The user might not be familiar with the WHERE clause, so explaining that the WHERE condition filters the rows based on the price is important. Also, maybe mention that the result will include only the products with prices",
+      "checkpoint_outputs": {
+        "250": "<think>\nOkay, the user wants to find products with a price less than 50. Let me look at the schema they provided. There's a table called products with columns id, name, and price. The WHERE clause for the WHERE clause would be WHERE price < 50. So the query should select the products where their price is below 50. I need to make sure that the price is a decimal and that the WHERE condition is correctly formatted. Let me write that query as well.\n</think>\n\nSELECT * FROM products WHERE price < 50;"
+      }
+    },
+    {
+      "test_id": "count_001",
+      "category": "aggregation",
+      "expected_type": "sql",
+      "system_prompt": "Dialect: sql\nSchema:\nCREATE TABLE orders (id INT, status VARCHAR, total DECIMAL)",
+      "user_prompt": "How many orders were cancelled?",
+      "base_output": "<think>\nOkay, the user is asking how many orders were cancelled. Let me look at the schema provided. The table has columns id, status, and total. The status column is a VARCHAR, so it can hold strings like 'cancelled', 'delivered', etc. The question is about the number of cancelled orders.\n\nI need to count the occurrences of 'cancelled' in the status column. So, the approach would be to count the rows where status equals 'cancelled'. \n\nWait, but I should make sure that there are no duplicates. Maybe the status column has multiple entries for the same order. But since it's a VARCHAR, if the same status is repeated, it's still counted once per row. So the count would be the number of rows where status is 'cancelled'.\n\nI need to write a SQL query to do this. The SELECT statement would be SELECT COUNT(*) FROM orders WHERE status = 'cancelled'. That should give the total number of cancelled orders.\n\nLet me double-check",
+      "checkpoint_outputs": {
+        "250": "<think>\nSELECT COUNT(*) FROM orders WHERE status = 'cancelled';\n</think>\n\nSELECT COUNT(*) FROM orders WHERE status = 'cancelled';"
+      }
+    },
+    {
+      "test_id": "count_002",
+      "category": "aggregation",
+      "expected_type": "sql",
+      "system_prompt": "Dialect: sql\nSchema:\nCREATE TABLE head (age INTEGER)",
+      "user_prompt": "How many heads are older than 56?",
+      "base_output": "<think>\nOkay, let's see. The user is asking how many heads are older than 56. The schema provided is a simple table with a column called 'age' which is an integer. \n\nFirst, I need to figure out what data the 'age' column represents. Since it's an integer, it's likely storing the age of each head. The question is about counting how many heads are older than 56. \n\nSo, I need to count the rows where the 'age' is greater than 56. In SQL, this would be a simple count. The query would be SELECT COUNT(*) FROM head WHERE age > 56; \n\nWait, but I should make sure that the 'age' column is correctly used. Since the user mentioned 'age INTEGER', the table structure is correct. There's no mention of other columns, so I don't need to consider anything else. \n\nI don't see any other constraints or possible errors here. The",
+      "checkpoint_outputs": {
+        "250": "<think>\nSELECT COUNT(*) FROM head WHERE age > 56;\n</think>\n\nSELECT COUNT(*) FROM head WHERE age > 56;"
+      }
+    },
+    {
+      "test_id": "join_001",
+      "category": "join",
+      "expected_type": "sql",
+      "system_prompt": "Dialect: sql\nSchema:\nCREATE TABLE users (id INT, name VARCHAR); CREATE TABLE orders (id INT, user_id INT, amount DECIMAL)",
+      "user_prompt": "List users and their orders",
+      "base_output": "<think>\nOkay, let's see. The user wants me to list users and their orders. The tables provided are users and orders. \n\nFirst, I need to figure out how to connect these two tables. The users table has an id and a name, and the orders table has an id, user_id, and amount. \n\nSo, to get users and their orders, I should join these two tables on the user_id. That way, each user's order data can be linked. \n\nIn SQL, joining two tables can be done using the INNER JOIN clause. The common column here is user_id, so I should use that. \n\nThe structure of the query would be SELECT users.name, orders.id FROM users INNER JOIN orders ON users.id = orders.user_id. \n\nWait, but does the user_id in orders match the id in users? Yes, because the user_id is a foreign key that points to the user's id. \n\nI should make sure that the tables are properly",
+      "checkpoint_outputs": {
+        "250": "<think>\nOkay, so I need to list users and their orders. Let me look at the tables. There's a 'users' table with columns 'id' and 'name'. Then there's an 'orders' table with 'id', 'user_id', and 'amount'. The user wants to see the names of users along with the total amount of orders they've made. How do I join these two tables? Well, the 'user_id' in the orders table matches the 'id' in the users table. So I should join the users and orders tables on user_id. Once I have that, I can group by user_id to get the total orders per user. But wait, the user might not have any orders, so I should handle that. Maybe include a case where the user_id is NULL. Let me write the SQL query. It should be SELECT users.name, SUM(orders.amount) as total_amount FROM users INNER JOIN orders ON users.id = orders.user_id"
+      }
+    },
+    {
+      "test_id": "join_002",
+      "category": "join",
+      "expected_type": "sql",
+      "system_prompt": "Dialect: sql\nSchema:\nCREATE TABLE customers (id INT, name VARCHAR); CREATE TABLE orders (id INT, customer_id INT, total DECIMAL); CREATE TABLE products (id INT, name VARCHAR)",
+      "user_prompt": "Show all customers who ordered products",
+      "base_output": "<think>\nOkay, the user wants to show all customers who ordered products. Let me think about how to approach this.\n\nFirst, I need to figure out the relationship between the customers and the orders table. The orders table has a customer_id, which connects to the customers table. So, each order belongs to a customer.\n\nBut wait, the question is about customers who ordered products. Does that mean customers who ordered at least one product? Or customers who ordered a product that exists in the products table? The wording is a bit ambiguous. The original question says \"ordered products\", which might imply that the customer has ordered at least one product. So I need to find all customers who have at least one order in the orders table.\n\nSo the SQL query would involve joining the customers and orders tables on customer_id. Then, selecting the customer's name. But wait, what if a customer has multiple orders? The query should still include all customers, even if they have multiple orders. That makes sense",
+      "checkpoint_outputs": {
+        "250": "<think>\nSELECT customers.name FROM customers JOIN orders ON customers.id = orders.customer_id JOIN products ON orders.product_id = products.id WHERE orders.total > 0 AND products.name IS NOT NULL GROUP BY customers.name ORDER BY customers.name;\n</think>\n\nSELECT customers.name FROM customers JOIN orders ON customers.id = orders.customer_id JOIN products ON orders.product_id = products.id WHERE orders.total > 0 AND products.name IS NOT NULL GROUP BY customers.name ORDER BY customers.name;"
+      }
+    },
+    {
+      "test_id": "groupby_001",
+      "category": "group_by",
+      "expected_type": "sql",
+      "system_prompt": "Dialect: sql\nSchema:\nCREATE TABLE sales (product VARCHAR, quantity INT, revenue DECIMAL)",
+      "user_prompt": "Total revenue per product",
+      "base_output": "<think>\nOkay, the user is asking for the total revenue per product. Let me think about how to approach this. The table they provided is called sales, with columns product, quantity, and revenue. \n\nFirst, I need to figure out what they want. They probably want a summary of each product's total revenue. So, the goal is to calculate the revenue for each product and then present that in a readable format.\n\nThe current table has each row representing a sale of a product. Each row has the product name, quantity, and revenue. To get the total revenue per product, I need to sum up the revenue for each product. \n\nWait, but how do I do that in SQL? The table has three columns: product, quantity, revenue. So, perhaps I can group the rows by the product column and sum the revenue for each group. That way, each product's total revenue is calculated once.\n\nLet me check the syntax. The SUM function can be used with a",
+      "checkpoint_outputs": {
+        "250": "<think>\nSELECT product, SUM(revenue) as total_revenue FROM sales GROUP BY product;\n</think>\n\nSELECT product, SUM(revenue) as total_revenue FROM sales GROUP BY product;"
+      }
+    },
+    {
+      "test_id": "groupby_002",
+      "category": "group_by",
+      "expected_type": "sql",
+      "system_prompt": "Dialect: sql\nSchema:\nCREATE TABLE orders (customer_id INT, total DECIMAL, order_date DATE)",
+      "user_prompt": "Average order value by customer",
+      "base_output": "<think>\nOkay, the user wants to calculate the average order value by customer. Let me think about how to approach this.\n\nFirst, I need to check the schema provided. The table is named 'orders' with columns customer_id, total, and order_date. The columns are all in the same data type, so there's no issue there.\n\nThe query needs to compute the average of the total column. Since SQL doesn't have a built-in function for averages by customer, I have to use a GROUP BY clause. That makes sense because each customer has a unique customer_id, so grouping by that column allows me to calculate the average for each customer.\n\nSo the correct SQL statement would be SELECT AVG(total) FROM orders GROUP BY customer_id. \n\nWait, are there any other factors the user might be interested in? The problem statement only mentions average order value by customer, so I don't need to consider other columns or conditions. The query should be straightforward.\n\nI should also make sure that",
+      "checkpoint_outputs": {
+        "250": "<think>\nSELECT customer_id, AVG(total) as avg_order_value FROM orders GROUP BY customer_id;\n</think>\n\nSELECT customer_id, AVG(total) as avg_order_value FROM orders GROUP BY customer_id;"
+      }
+    },
+    {
+      "test_id": "orderby_001",
+      "category": "ordering",
+      "expected_type": "sql",
+      "system_prompt": "Dialect: sql\nSchema:\nCREATE TABLE movies (title VARCHAR, rating DECIMAL, year INT)",
+      "user_prompt": "Top 5 highest rated movies",
+      "base_output": "<think>\nOkay, the user wants the top 5 highest rated movies. Let me check the schema they provided. The table is called movies, with columns title, rating, and year. So, the rating is a decimal, and the year is an integer.\n\nFirst, I need to find the movies with the highest ratings. Since there's a rating column, I can calculate the highest value by selecting the MAX(rating) from the movies table. Then, I need to get the top 5 results from that MAX value.\n\nWait, but how to get the top 5? If there are multiple movies with the same maximum rating, maybe they need to be ordered by title. So, after finding the maximum rating, I should select the movies where rating equals that maximum and order them by title in descending order. Then take the top 5.\n\nI should also make sure that the MAX function works correctly. Maybe there's a case where there are multiple entries with the same maximum, so",
+      "checkpoint_outputs": {
+        "250": "<think>\nSELECT title, rating FROM movies WHERE rating > 5 ORDER BY rating DESC LIMIT 5;\n</think>\n\nSELECT title, rating FROM movies WHERE rating > 5 ORDER BY rating DESC LIMIT 5;"
+      }
+    },
+    {
+      "test_id": "orderby_002",
+      "category": "ordering",
+      "expected_type": "sql",
+      "system_prompt": "Dialect: sql\nSchema:\nCREATE TABLE employees (name VARCHAR, salary DECIMAL, department VARCHAR)",
+      "user_prompt": "Show the 3 highest paid employees",
+      "base_output": "<think>\nOkay, the user wants to show the 3 highest paid employees from the employees table. Let me think about how to approach this.\n\nFirst, I need to figure out how to get the salaries. The table has a column called salary, which is a decimal. So I can select that column. Then, to get the top 3, I should order the salaries in descending order and limit to 3. \n\nWait, the table has a department column too, but the user didn't mention anything about departments. Maybe they just want the salaries, regardless of department. But I should check if the department is relevant. The question says \"highest paid employees,\" so perhaps the department isn't needed. But maybe the user expects to have both salary and department. But the original query doesn't specify that. So I should stick with the salary column.\n\nSo the SQL query would be SELECT name, salary FROM employees ORDER BY salary DESC LIMIT 3. That should give the three highest salaries",
+      "checkpoint_outputs": {
+        "250": "<think>\nSELECT name, salary, department FROM employees ORDER BY salary DESC LIMIT 3;\n</think>\n\nSELECT name, salary, department FROM employees ORDER BY salary DESC LIMIT 3;"
+      }
+    },
+    {
+      "test_id": "subquery_001",
+      "category": "subquery",
+      "expected_type": "sql",
+      "system_prompt": "Dialect: sql\nSchema:\nCREATE TABLE employees (name VARCHAR, salary DECIMAL)",
+      "user_prompt": "Employees with salary above average",
+      "base_output": "<think>\nOkay, the user wants to find employees whose salary is above the average. Let me think about how to approach this.\n\nFirst, I need to calculate the average salary. The average is the sum of all salaries divided by the number of employees. So I'll need to sum up all the salaries and divide by the count. \n\nWait, but how do I handle if there are no employees? Oh, but the problem says \"Employees with salary above average,\" so maybe it's assuming there are at least one employee. I should mention that in case there are none.\n\nThen, I need a query that selects employees whose salary is greater than this average. Using a SELECT statement with a WHERE clause. But how to compute the average? Maybe using a subquery or a function. \n\nIn SQL, you can use AVG() to get the average. So the average salary would be SELECT AVG(salary) FROM employees. Then, the WHERE condition would be salary > AVG(salary). \n\n",
+      "checkpoint_outputs": {
+        "250": "<think>\nSELECT name, salary FROM employees WHERE salary > (SELECT AVG(salary) FROM employees);\n</think>\n\nSELECT name, salary FROM employees WHERE salary > (SELECT AVG(salary) FROM employees);"
+      }
+    },
+    {
+      "test_id": "subquery_002",
+      "category": "subquery",
+      "expected_type": "sql",
+      "system_prompt": "Dialect: sql\nSchema:\nCREATE TABLE products (id INT, price DECIMAL); CREATE TABLE orders (product_id INT, quantity INT)",
+      "user_prompt": "Products that have been ordered",
+      "base_output": "<think>\nOkay, the user is asking for products that have been ordered. Let me think about how to approach this.\n\nFirst, I need to understand the schema provided. There's a products table with an id and price, and an orders table with product_id and quantity. So, the orders table connects to the products table via the product_id.\n\nThe user wants to find all products that have been ordered. That means looking at the orders table and then joining it with the products table on product_id. But wait, the orders table only has quantity, not the product name. So, how do I get the product names?\n\nI should use a JOIN between the orders and products tables on product_id. Then, filter out any rows where quantity is zero because those might be orders that haven't been completed. Wait, the user might not specify if quantity is zero or not. But maybe the orders table has quantity, and we need to exclude those with zero. Or maybe they just want to know",
+      "checkpoint_outputs": {
+        "250": "<think>\nSELECT products.id, products.price FROM products INNER JOIN orders ON products.id = orders.product_id WHERE orders.quantity > 0;\n</think>\n\nSELECT products.id, products.price FROM products INNER JOIN orders ON products.id = orders.product_id WHERE orders.quantity > 0;"
+      }
+    },
+    {
+      "test_id": "distinct_001",
+      "category": "distinct",
+      "expected_type": "sql",
+      "system_prompt": "Dialect: sql\nSchema:\nCREATE TABLE visits (user_id INT, page VARCHAR)",
+      "user_prompt": "How many unique users visited?",
+      "base_output": "<think>\nOkay, let's see. The user is asking how many unique users visited. The schema provided is a table called visits with columns user_id and page. \n\nFirst, I need to figure out what \"unique users\" means here. In SQL, \"unique\" usually refers to rows where each entry is distinct. So, if each visit is a row, then the number of unique users would be the number of distinct user_ids in the table.\n\nBut wait, maybe there's a trick here. Sometimes, when tables have multiple entries with the same user_id, even if they have different pages, those would be considered the same user. So the count of distinct user_ids would give the number of unique users.\n\nSo, the question is asking for the count of unique users, which is essentially the number of distinct values in the user_id column. The answer would be the number of unique rows in the visits table where each row has a user_id.\n\nI should check if there's any",
+      "checkpoint_outputs": {
+        "250": "<think>\nSELECT COUNT(DISTINCT user_id) FROM visits WHERE page = 'home';\n</think>\n\nSELECT COUNT(DISTINCT user_id) FROM visits WHERE page = 'home';"
+      }
+    },
+    {
+      "test_id": "date_001",
+      "category": "date_operations",
+      "expected_type": "sql",
+      "system_prompt": "Dialect: sql\nSchema:\nCREATE TABLE users (id INT, name VARCHAR, created_at DATE)",
+      "user_prompt": "List users registered in 2024",
+      "base_output": "<think>\nOkay, the user wants to list all users who registered in 2024. Let me check the schema provided. The table is called users, and it has columns id, name, and created_at. The created_at column is a DATE type, which means it stores dates in the format YYYY-MM-DD.\n\nSo, to find users registered in 2024, I need to filter the created_at column to dates where the year is 2024. In SQL, I can use the WHERE clause. The correct syntax would be WHERE created_at LIKE '%2024%'. That way, any entry with the year 2024 will be included.\n\nWait, I should make sure that the date is stored correctly. Since created_at is a DATE, the format should be correct. If there were a problem with the format, like using a different format, I might need to adjust the LIKE clause. But as per the schema, the created",
+      "checkpoint_outputs": {
+        "250": "<think>\nSELECT * FROM users WHERE created_at >= '2024-01-01' AND created_at < '2024-12-31';\n</think>\n\nSELECT * FROM users WHERE created_at >= '2024-01-01' AND created_at < '2024-12-31';"
+      }
+    },
+    {
+      "test_id": "date_002",
+      "category": "date_operations",
+      "expected_type": "sql",
+      "system_prompt": "Dialect: sql\nSchema:\nCREATE TABLE orders (id INT, order_date DATE, total DECIMAL)",
+      "user_prompt": "Orders from the last 30 days",
+      "base_output": "<think>\nOkay, the user is asking for orders from the last 30 days. Let me think about how to structure the SQL query for that.\n\nFirst, I need to figure out the date range. Since the orders are in the past, the last 30 days would be from the current date minus 30 days back. But wait, if today is October 20, 2023, then the last 30 days would be up to September 1, 2023. So the order_date needs to be between those dates.\n\nNow, how to get the last 30 days in SQL? The standard way is to use the DATE_SUB function. So, if today's date is '2023-10-20', then DATE_SUB(current_date, INTERVAL 30 DAY) would give me the start date. But maybe I should use a current date variable to make it dynamic.\n\nAlternatively, I can use",
+      "checkpoint_outputs": {
+        "250": "<think>\nOkay, the user is asking for orders from the last 30 days. Let me think about how to write that in SQL. The table is named 'orders'. The columns are 'id', 'order_date', and 'total'. The user wants orders from the last 30 days, so I need to filter the 'order_date' to be within the last 30 days. The date function in SQL can help with that. So, the query would be SELECT * FROM orders WHERE order_date >= DATEADD(day, -30, GETDATE()); But wait, what if there are multiple dates in the last 30 days? Using the DATEADD function should handle that. Let me make sure that the syntax is correct. Yes, that should work. So the final query would be SELECT * FROM orders WHERE order_date >= DATEADD(day, -30, GETDATE()); That should return all orders from the last 30 days.\n</think>\n\nSELECT"
+      }
+    },
+    {
+      "test_id": "window_001",
+      "category": "window_functions",
+      "expected_type": "sql",
+      "system_prompt": "Dialect: sql\nSchema:\nCREATE TABLE orders (id INT, customer_id INT, total DECIMAL, order_date DATE)",
+      "user_prompt": "Find the 5 most recent orders for each customer",
+      "base_output": "<think>\nOkay, so the user wants the 5 most recent orders for each customer. Let me think about how to approach this.\n\nFirst, I need to understand the table structure. The table has columns id, customer_id, total, and order_date. Each row represents an order. The goal is to find the 5 most recent orders per customer.\n\nHmm, how do I get the most recent? Well, the order_date is the date when the order was placed. To get the most recent, I need to order by date in descending order. But the problem is that if there are multiple orders for the same customer, how do I select the top 5?\n\nWait, maybe I should group by customer_id and order_date, then order by date descending. Then, for each group, take the top 5. But how to handle duplicates? For example, if a customer has multiple orders, each would be a separate row. But the user wants the top 5 for each",
+      "checkpoint_outputs": {
+        "250": "<think>\nOkay, so the user wants to find the 5 most recent orders for each customer. Let me think about how to approach this. The existing table is called 'orders', and it has columns 'id', 'customer_id', 'total', and 'order_date'. The goal is to get the top 5 orders for each customer, sorted by order_date in descending order.\n\nFirst, I need to group the orders by customer_id. Then, for each group, sort the orders by order_date in descending order. Finally, select the top 5 rows from each group. Wait, but if a customer has multiple orders, how do I handle duplicates? The problem says \"for each customer,\" so maybe it's okay to have duplicates, but the user wants the top 5 regardless. But the way to handle that is to use a subquery or a common table expression. Let me try writing a query that does this.\n\nThe query would be something like:\n\nSELECT customer_id,"
+      }
+    },
+    {
+      "test_id": "complex_001",
+      "category": "complex",
+      "expected_type": "sql",
+      "system_prompt": "Dialect: sql\nSchema:\nCREATE TABLE customers (id INT, name VARCHAR, city VARCHAR); CREATE TABLE orders (id INT, customer_id INT, total DECIMAL, order_date DATE)",
+      "user_prompt": "Total sales per city, ordered by total descending",
+      "base_output": "<think>\nOkay, the user wants the total sales per city ordered by descending total. Let me think about how to approach this.\n\nFirst, I need to figure out how to join the customers and orders tables. The customers table has city and customer_id, and orders has customer_id and total. So, to get total sales per city, I should group by customer_id and then sum the total from orders. Then, order the results by total in descending order.\n\nWait, but if I just sum total, does that give me the total sales per city? Yes, because each customer's total is summed. So the SQL query would be something like:\n\nSELECT city, SUM(total) AS total_sales\nFROM customers\nJOIN orders ON customers.id = orders.customer_id\nGROUP BY customers.id\nORDER BY total_sales DESC;\n\nWait, but the customer's city is in the customers table, so joining on customer_id makes sense. But maybe the city is in the orders table too? Let me check",
+      "checkpoint_outputs": {
+        "250": "<think>\nSELECT customers.city, SUM(orders.total) AS total_sales FROM orders JOIN customers ON orders.customer_id = customers.id GROUP BY customers.city ORDER BY total_sales DESC;\n</think>\n\nSELECT customers.city, SUM(orders.total) AS total_sales FROM orders JOIN customers ON orders.customer_id = customers.id GROUP BY customers.city ORDER BY total_sales DESC;"
+      }
+    }
+  ]
+}
