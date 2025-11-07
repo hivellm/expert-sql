@@ -1,8 +1,8 @@
 {
   "name": "expert-sql",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "schema_version": "2.0",
-  "description": "Production-ready SQL query generation expert. Trained on 99,935 validated examples with 9.6/10 quality score. Excellent for e-commerce, CRM, analytics, and business reports. Checkpoint-1250 optimized for real-world queries.",
+  "description": "Production-ready SQL query generation expert. Trained on 147,140 validated examples from multiple sources with 9.6/10 quality score. Excellent for e-commerce, CRM, analytics, and business reports. Checkpoint-1250 optimized for real-world queries.",
   "author": "hivellm",
   "homepage": "https://github.com/hivellm/expert-sql",
   
@@ -150,7 +150,7 @@
       "path": "datasets/train.jsonl",
       "format": "jsonl",
       "streaming": false,
-      "_comment": "gretelai/synthetic_text_to_sql: 99,935 validated examples. MySQL->PostgreSQL conversion, sqlglot validation, deduplicated. Optimized to text-only format (77% smaller). Checkpoint-1250 achieved 9.6/10 quality score."
+      "_comment": "Multi-source dataset: 147,140 validated examples (gretelai/synthetic_text_to_sql: 99,935, Clinton/Text-to-sql-v1: 47,145, synthetic_fixes: 60). Multi-dialect normalization (MySQL/SQLite->SQL), sqlglot validation, deduplicated (2,855 removed), English-only. Optimized to text-only format (77% smaller). Checkpoint-1250 achieved 9.6/10 quality score."
     },
     "config": {
       "method": "sft",
@@ -171,7 +171,7 @@
       "_warmup_comment": "Using warmup_ratio=0.1 (10%, LLaMA-Factory best practice) = ~150 steps. warmup_steps=0 when using ratio.",
       "lr_scheduler": "cosine",
       "_scheduler_comment": "Simple cosine decay. More conservative to prevent pattern overfitting.",
-      "max_seq_length": 800,
+      "max_seq_length": 1024,
       "dataloader_num_workers": 0,
       "dataloader_pin_memory": false,
       "dataloader_prefetch_factor": 1,

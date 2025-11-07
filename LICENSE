@@ -28,16 +28,38 @@ Under the following terms:
 
 ---
 
-This license matches the source dataset license (gretelai/synthetic_text_to_sql)
-which is licensed under Apache 2.0.
+This license matches the source dataset licenses, which are licensed under Apache 2.0 or CC-BY-4.0.
 
-Dataset Citation:
+Dataset Licenses:
 
-Gretel Synthetic Text-to-SQL:
-  Gretel AI. 2024.
-  "Synthetic Text-to-SQL Dataset - 100k high-quality examples"
-  https://huggingface.co/datasets/gretelai/synthetic_text_to_sql
-  License: Apache 2.0
+1. Gretel Synthetic Text-to-SQL:
+   - Source: Gretel AI. 2024.
+   - "Synthetic Text-to-SQL Dataset - 100k high-quality examples"
+   - https://huggingface.co/datasets/gretelai/synthetic_text_to_sql
+   - License: Apache 2.0
+   - Examples: 99,935
+
+2. Clinton/Text-to-sql-v1:
+   - Source: Clinton. 2024.
+   - "Text-to-SQL Dataset v1"
+   - https://huggingface.co/datasets/Clinton/Text-to-sql-v1
+   - License: Apache 2.0
+   - Examples: 47,145
+
+3. Synthetic Fixes (Manual):
+   - Source: HiveLLM. 2025.
+   - "Synthetic SQL examples targeting critical deficiencies"
+   - Created for this work
+   - License: CC-BY-4.0 (matches this work)
+   - Examples: 60
+
+License Compatibility:
+All datasets are compatible with CC-BY-4.0:
+- Apache 2.0 datasets can be used under CC-BY-4.0 with attribution
+- Synthetic fixes are created for this work and use CC-BY-4.0
+
+Attribution:
+This work uses datasets from Gretel AI and Clinton, with manual synthetic examples created by HiveLLM.
 
 Base Model Citation:
 
