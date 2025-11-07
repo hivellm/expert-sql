@@ -1,6 +1,6 @@
 {
   "name": "expert-sql",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "schema_version": "2.0",
   "description": "Production-ready SQL query generation expert. Trained on 99,935 validated examples with 9.6/10 quality score. Excellent for e-commerce, CRM, analytics, and business reports. Checkpoint-1250 optimized for real-world queries.",
   "author": "hivellm",
@@ -89,10 +89,46 @@
       "table",
       "select",
       "join",
-      "where"
+      "where",
+      "from",
+      "group by",
+      "order by",
+      "insert",
+      "update",
+      "delete",
+      "users",
+      "customers",
+      "orders",
+      "products",
+      "find all",
+      "find",
+      "get all",
+      "get",
+      "show all",
+      "show",
+      "list all",
+      "list",
+      "older",
+      "younger",
+      "between",
+      "count",
+      "sum",
+      "average"
+    ],
+    "exclude_keywords": [
+      "what is",
+      "what are",
+      "explain",
+      "meaning",
+      "definition",
+      "describe",
+      "tell me about",
+      "how does",
+      "why"
     ],
     "router_hint": "database=sql OR query=sql OR task=text2sql",
-    "priority": 0.80
+    "priority": 0.85,
+    "_comment": "Priority 0.85 for SQL queries. exclude_keywords prevent using expert for explanatory questions."
   },
   
   "perf": {

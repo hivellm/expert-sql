@@ -89,7 +89,17 @@ GROUP BY salesperson, region;
 - ⚠️ **Deeply nested CASE WHEN** (3+ levels) - only generates simple cases
 - ⚠️ **Column alias consistency** - occasional ORDER BY alias errors
 
-**Recommendation:** Use for 95% of typical web application queries. For recursive hierarchies or complex set operations, validate and adjust the generated SQL manually.
+**Critical Issues Found in Practical Testing:**
+- ❌ **NOT EXISTS queries** - May generate infinite nested subqueries (loops)
+- ⚠️ **Complex JOIN queries** - Works correctly but may generate repetitive output
+- ⚠️ **Queries without explicit schema** - Performance degrades significantly without schema context
+- ⚠️ **Multi-table aggregations** - May produce verbose or repetitive SQL
+
+**Recommendation:** 
+- ✅ **Always provide explicit schema** in prompts for best results
+- ✅ Use for 95% of typical web application queries with schema context
+- ⚠️ **Validate complex queries** manually, especially NOT EXISTS patterns
+- ❌ Avoid recursive hierarchies or complex set operations without validation
 
 ## Training
 
