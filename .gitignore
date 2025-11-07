@@ -53,5 +53,6 @@ desktop.ini
 !README.md
 !.gitignore
 
-# Unsloth
-unsloth_compiled_cache
+# Unsloth compiled cache (now centralized in expert/cache/)
+# This directory is deprecated and can be safely deleted
+unsloth_compiled_cache/
