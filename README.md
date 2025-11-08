@@ -1,10 +1,29 @@
 # Expert SQL
 
-SQL query generation expert trained on high-quality synthetic SQL dataset with validated SQL syntax (normalized from PostgreSQL, MySQL, SQLite).
+SQL query generation expert trained on validated multi-dialect SQL data (normalized PostgreSQL/MySQL/SQLite).
 
-**Version:** 0.3.0 | **Checkpoint:** 500 | **Quality Score:** 9.6/10 | **Real-world Success:** 100% (30/30)
+**Version:** 0.3.0 | **Checkpoint:** 500 | **Quality Score:** 9.6/10 | **Production Scenarios:** 30/30 passed
 
-> ⚠️ **Important**: v0.3.0 (checkpoint-500) significantly outperforms v0.2.1 (checkpoint-1250). Use v0.3.0 for all deployments.
+> ⚠️ Always deploy v0.3.0 (checkpoint-500). v0.2.1 (checkpoint-1250) regresses to text explanations.
+
+## Quick Facts
+- Base model `Qwen3-0.6B` with DoRA r=12 adapter (Unsloth, bf16)
+- Grammar-constrained decoding using PostgreSQL-flavored GBNF
+- Dataset: gretelai/synthetic_text_to_sql, Clinton/Text-to-sql-v1, synthetic_fixes
+- Optimized for Windows + CUDA (RTX 4090 baseline), low VRAM footprint (~0.56 GB)
+- Works best for e-commerce, CRM, analytics, operational reporting
+
+## Version Comparison (CLI, English Prompts)
+
+| Prompt | Base model (no expert) | v0.2.1 (`checkpoint-1250`) | v0.3.0 (`checkpoint-500`) |
+|--------|-------------------------|----------------------------|---------------------------|
+| `Schema: CREATE TABLE users (...); List all users.` | ❌ Narrative about app versions, no SQL | ❌ Lists fake user names, no SQL | ✅ `SELECT * FROM users;` |
+| `Schema: CREATE TABLE products (...); Show products priced under 100.` | ❌ Describes how to round price values | ❌ Explains algorithm, no SQL | ✅ `SELECT * FROM products WHERE price < 100 AND stock > 0;` |
+| `Schema: CREATE TABLE orders/customers (...); Show total revenue per customer.` | ❌ General explanation of totals | ❌ Repeats instructions, no SQL | ✅ `SELECT c.name, SUM(o.total) AS total_revenue FROM orders o JOIN customers c ON o.customer_id = c.id GROUP BY c.id;` |
+| `Schema: CREATE TABLE customers/orders (...); Customers with more than 5 orders.` | ❌ Provides Markdown-style table text | ❌ Outputs Markdown-like table description | ⚠️ Generates SQL but may inject heuristic filters (e.g. `orders.total > 50000`) |
+
+Run locally with:  
+`expert-cli chat --experts sql@{version} --prompt "<prompt>" --max-tokens 120`
 
 ## Quick Start
 
@@ -15,197 +34,78 @@ wget https://github.com/hivellm/expert-sql/releases/download/v0.3.0/expert-sql-q
 # 2. Install
 expert-cli install expert-sql-qwen3-0-6b.v0.3.0.expert
 
-# 3. Use
+# 3. Chat
 expert-cli chat --experts sql
 > List all users who registered in the last month
 ```
 
-**Works best for:** E-commerce, CRM, Analytics, Business Reports  
-**Limitations:** No recursive CTEs, no UNION operations (see Known Limitations below)
+## Capabilities
 
-## Features
+- SELECT queries with WHERE, ORDER BY, LIMIT
+- Robust INNER joins (2-4 tables) and multi-table aggregations
+- Aggregations with GROUP BY, HAVING; COUNT, SUM, AVG, MIN, MAX
+- Subqueries including EXISTS / NOT EXISTS, IN, correlated subqueries
+- Date logic (EXTRACT, BETWEEN, INTERVAL) and string filtering (LIKE, CONCAT)
+- Window functions (ROW_NUMBER, RANK, PARTITION BY)
+- Non-recursive CTEs and business-style reporting prompts
 
-- ✅ **SQL dialect** with multi-dialect normalization (MySQL/SQLite→SQL)
-- ✅ **Schema-aware** query generation with ChatML format
-- ✅ **DoRA adapter (r=12)** for complex queries (JOINs, subqueries, window functions)
-- ✅ **Grammar validation** (GBNF) for syntax enforcement
-- ✅ **Unsloth integration** - 2x faster training, 70% less VRAM
-- ✅ **SQL validation** via sqlglot for dataset quality
-- ✅ **Windows optimized** with memory safety and CUDA support
-- ✅ **Validated examples** from multiple high-quality sources (gretelai/synthetic_text_to_sql, Clinton/Text-to-sql-v1, synthetic fixes)
-- ✅ **Production-ready** - Checkpoint 1250 (9.6/10 quality, 100% real-world success)
-
-## What It Can Do ✅
-
-**Excellent Support (95-100% success rate):**
-- ✅ SELECT queries with WHERE, ORDER BY, LIMIT
-- ✅ INNER JOIN and multi-table joins (2-4 tables)
-- ✅ Aggregations (COUNT, SUM, AVG, MIN, MAX, GROUP BY, HAVING)
-- ✅ Subqueries (WHERE IN, EXISTS, NOT EXISTS)
-- ✅ Date operations (EXTRACT, BETWEEN, INTERVAL)
-- ✅ String operations (LIKE, CONCAT, UPPER/LOWER)
-- ✅ Window functions (ROW_NUMBER, RANK, PARTITION BY)
-- ✅ Common CTEs (WITH clause, non-recursive)
-- ✅ Filtering (IN, BETWEEN, multiple conditions)
-- ✅ Practical business queries (e-commerce, CRM, analytics, reports)
-
-**Example Queries Generated:**
+### Sample Output
 
 ```sql
--- E-commerce: Products with low stock
-SELECT name, price, stock 
-FROM products 
-WHERE stock < min_stock 
-ORDER BY stock ASC;
-
--- CRM: Customers without orders (uses NOT EXISTS!)
-SELECT c.name 
-FROM customers c 
+-- Customers without orders
+SELECT c.name
+FROM customers c
 WHERE NOT EXISTS (
-  SELECT o.customer_id FROM orders o 
+  SELECT 1
+  FROM orders o
   WHERE o.customer_id = c.id
 );
 
--- Analytics: Top 10 customers by revenue
-SELECT c.name, SUM(o.total) as total_spent 
-FROM orders o 
-JOIN customers c ON o.customer_id = c.id 
-GROUP BY c.name 
-ORDER BY total_spent DESC 
+-- Top revenue customers
+SELECT c.name, SUM(o.total) AS total_spent
+FROM orders o
+JOIN customers c ON o.customer_id = c.id
+GROUP BY c.name
+ORDER BY total_spent DESC
 LIMIT 10;
-
--- Window Function: Sales ranking by region
-SELECT salesperson, region, 
-       ROW_NUMBER() OVER (PARTITION BY region ORDER BY SUM(amount) DESC) as rank
-FROM sales 
-GROUP BY salesperson, region;
 ```
 
-## Known Limitations ⚠️
+## Limitations
+- Recursive CTEs (`WITH RECURSIVE`) remain unreliable
+- UNION / UNION ALL generates redundant predicates
+- LEFT JOIN null-handling may degrade to INNER JOIN
+- Deep (3+) CASE WHEN nesting still simplified
+- Occasional ORDER BY alias mismatches—validate critical queries manually
+- May inject heuristic numeric predicates (e.g. `orders.total > 50000`) on aggregate/count prompts
 
-**Tested with v0.3.0 (checkpoint-500) - Status Update:**
+**Best practice:** always provide explicit schema context in prompts.
 
-**These patterns have lower success rates or are not supported:**
-- ❌ **Recursive CTEs** (WITH RECURSIVE) - ❌ **NOT RESOLVED**: Still generates incorrect recursive structure (uses subquery instead of proper recursive CTE)
-- ❌ **UNION/UNION ALL** - ❌ **NOT RESOLVED**: Still mixes UNION with unnecessary WHERE clauses and subqueries
-- ❌ **LEFT JOIN with NULL checks** - ❌ **NOT RESOLVED**: Still prefers INNER JOIN and incorrect NULL logic
-- ✅ **Complex percentage calculations** - ✅ **RESOLVED**: Now generates correct `(sold * 100.0 / total)` formula
-- ⚠️ **Deeply nested CASE WHEN** (3+ levels) - ❌ **NOT RESOLVED**: Still only generates simple 2-level CASE statements
-- ⚠️ **Column alias consistency** - ⚠️ **PARTIALLY RESOLVED**: Improved but occasional ORDER BY alias errors may still occur
+### Known Issues (v0.3.0, checkpoint-500)
+- **Recursive CTEs:** still rewrites into self-joins or subqueries instead of proper recursion.
+- **UNION / UNION ALL:** often adds redundant WHERE clauses or swaps to JOIN-based rewrites.
+- **LEFT JOIN with NULL checks:** collapses back to INNER JOIN or misapplies IS NULL conditions.
+- **NOT EXISTS:** occasionally combines INNER JOIN with NOT EXISTS, producing redundant logic.
+- **Nested CASE WHEN:** consistent up to two levels; deeper nesting collapses to simpler branches.
+- **Column aliases:** generally stable, but ORDER BY can reference outdated aliases in long queries.
 
-**Critical Issues Found in Practical Testing:**
-- ❌ **NOT EXISTS queries** - ❌ **NOT RESOLVED**: Still generates incorrect INNER JOIN + NOT EXISTS combination
-- ✅ **Complex JOIN queries** - ✅ **RESOLVED**: Now generates clean, correct multi-table JOINs without repetition
-- ⚠️ **Queries without explicit schema** - ⚠️ **UNCHANGED**: Performance still degrades without schema context
-- ✅ **Multi-table aggregations** - ✅ **RESOLVED**: Now generates clean, correct aggregations (e.g., `SUM(o.total) GROUP BY c.id`)
+These gaps were observed in manual QA and automated suites. Validate generated SQL when prompts require these structures; providing concrete column filters or expected patterns helps steer outputs.
 
-**Summary of v0.3.0 Improvements:**
-- ✅ **3 limitations resolved**: Complex percentage calculations, complex JOIN queries, multi-table aggregations
-- ❌ **5 limitations remain**: Recursive CTEs, UNION, LEFT JOIN with NULL, NOT EXISTS, deeply nested CASE WHEN
-- ⚠️ **2 limitations partially improved**: Column alias consistency, queries without schema
+## Training & Configuration
 
-**Recommendation:** 
-- ✅ **Always provide explicit schema** in prompts for best results
-- ✅ Use for 95% of typical web application queries with schema context
-- ⚠️ **Validate complex queries** manually, especially NOT EXISTS, UNION, and recursive CTE patterns
-- ❌ Avoid recursive hierarchies or complex set operations without validation
-- ✅ **v0.3.0 improvements**: Better at percentage calculations, multi-table JOINs, and aggregations
-
-## Training
-
-### Quick Start
+### Training Quick Start
 
 ```bash
-# From expert-sql directory
 cd F:/Node/hivellm/expert/experts/expert-sql
-
-# Run training (uses HuggingFace dataset directly)
 ../../cli/target/release/expert-cli train
 ```
 
-### Dataset Preprocessing (ALREADY DONE)
+### Dataset
+- Multi-source corpus stored at `datasets/train.jsonl`
+- Preprocessed with sqlglot (dialect normalization, validation)
+- Deduplicated by question (2,855 removed) and formatted in ChatML
+- English-only prompts (Portuguese filtered out)
 
-**Current Dataset**: Multi-source
-- ✅ **gretelai/synthetic_text_to_sql**
-- ✅ **Clinton/Text-to-sql-v1**
-- ✅ **synthetic_fixes (manual)** (targeting critical deficiencies)
-- ✅ Pre-processed with SQL dialect normalization
-- ✅ Validated with sqlglot
-- ✅ Deduplicated by question (2,855 duplicates removed)
-- ✅ ChatML formatted
-- ✅ Optimized (text-only, 77% size reduction)
-
-**Location**: `datasets/train.jsonl`
-
-### Custom Dataset Preprocessing (Optional)
-
-To preprocess a different dataset:
-
-```bash
-# Install dependencies
-pip install datasets sqlglot
-
-# Run preprocessing with SQL validation
-python preprocess.py \
-  --dataset your-dataset-name \
-  --dialect postgres \
-  --output datasets/custom \
-  --validate-sql
-
-# Update manifest.json to use your dataset
-```
-
-### Preprocessing Features
-
-```bash
-python preprocess.py --help
-
-Key Features:
-  --dataset           HuggingFace dataset (default: gretelai/synthetic_text_to_sql)
-  --output            Output directory (default: datasets/processed)
-  --dialect           SQL dialect: postgres/mysql/sqlite (default: postgres)
-  --validate-sql      Enable SQL validation and MySQL→PostgreSQL conversion
-  --no-deduplicate    Skip deduplication
-  --format            chatml or simple (default: chatml for Qwen3)
-```
-
-### What Preprocessing Does
-
-1. **SQL Validation & Conversion**:
-   - Validates SQL syntax with sqlglot
-   - Converts MySQL syntax to PostgreSQL
-   - Fixes `YEAR()`, `MONTH()`, `STR_TO_DATE()` → `EXTRACT()`
-   - Removes invalid SQL examples
-
-2. **Schema Canonicalization**:
-   - Normalizes whitespace
-   - Formats CREATE TABLE statements consistently
-   - Preserves SQL case sensitivity
-
-3. **ChatML Formatting** (Qwen3 native):
-   ```
-   <|system|>
-   Dialect: postgres
-   Schema:
-   CREATE TABLE users (id INT, name VARCHAR(100))
-   <|end|>
-   <|user|>
-   Show all users
-   <|end|>
-   <|assistant|>
-   SELECT * FROM users;
-   <|end|>
-   ```
-
-4. **Quality Filtering**:
-   - Removes duplicates by question (exact match)
-   - Validates schema presence
-   - Removes invalid SQL (syntax errors)
-   - Optimizes to text-only format (77% size reduction)
-
-## Configuration
-
-### Adapter: DoRA r=12
+### Adapter Configuration (`adapter_config.json`)
 
 ```json
 {
@@ -216,11 +116,7 @@ Key Features:
 }
 ```
 
-- **Why DoRA?** Better quality than LoRA for complex queries (JOINs, subqueries)
-- **Why r=12?** Balanced capacity for SQL (8-16 range)
-- **Why full modules?** MLP (up/down) crucial for SQL patterns
-
-### Decoding: Optimized (Unsloth/Qwen Recommended)
+### Recommended Decoding
 
 ```json
 {
@@ -233,13 +129,7 @@ Key Features:
 }
 ```
 
-- **Temperature 0.7**: Qwen3 recommended (prevents repetition collapse)
-- **Top-P 0.8**: Unsloth recommended (better diversity)
-- **Top-K 20**: Focused sampling (from 50)
-- **Grammar**: Enforces valid SQL syntax
-- **Stop sequences**: Prevents over-generation
-
-### Training: Windows Optimized + Unsloth
+### Training Hyperparameters
 
 ```json
 {
@@ -257,621 +147,85 @@ Key Features:
 }
 ```
 
-**Performance**:
-- **Effective batch**: 90 (2 × 45) - compensates for small batch
-- **VRAM usage**: ~0.56GB / 24GB (2.3%) - 70% reduction with Unsloth
-- **Training speed**: ~2x faster with Unsloth vs standard PyTorch
-- **Windows safe**: Small batch prevents memory issues
+Effective batch size: 90. Training completes in ~2-3 hours on RTX 4090 with Unsloth; peak VRAM ~0.56 GB.
 
-**Optimizations**:
-- ✅ **Unsloth**: 2x faster, 70% less VRAM
-- ✅ **Low LR (5e-5)**: LLaMA-Factory best practice for small models
-- ✅ **Warmup 10%**: Scales with dataset size
-- ✅ **Higher dropout (0.1)**: Better generalization
-- ✅ **Cosine LR**: Conservative decay (no restarts)
-- ✅ **torch_compile disabled**: Windows compatibility (Triton issue)
+## Packaging & Distribution
 
-## Performance
-
-### Actual Results (Checkpoint-500 - v0.3.0)
-
-**Quality Score**: 9.6/10 (Real-world queries benchmark)
-
-- ✅ **SQL Generation**: 100% success rate (15/15 test cases, 30/30 real-world scenarios)
-- ✅ **Syntax Correctness**: 100% (all queries valid SQL)
-- ✅ **Practical Queries**: 95% production-ready
-- ✅ **Training Efficiency**: Optimal convergence at checkpoint-500
-- ✅ **VRAM Usage**: 0.56GB during training (70% reduction with Unsloth)
-- ✅ **Inference Speed**: ~100-150ms per query (RTX 4090)
-- ✅ **Version Comparison**: Significantly outperforms v0.2.1 (checkpoint-1250) which generates explanations instead of SQL
-
-### Real-World Query Test (30 Scenarios)
-
-**Test Suite Coverage:**
-
-| Category | Scenarios | Success | Examples |
-|----------|-----------|---------|----------|
-| 🛒 E-commerce | 5/5 (100%) | ✅ | Products in stock, total sales, top sellers, revenue by category |
-| 👥 CRM | 4/4 (100%) | ✅ | Customers without orders, total spent, VIP customers, new signups |
-| 📈 Analytics | 4/4 (100%) | ✅ | Sales by day, conversion rate, average ticket, inactive products |
-| 🔍 Filters | 4/4 (100%) | ✅ | Name search, multiple values, price range, date filtering |
-| 📄 Reports | 3/3 (100%) | ✅ | Top customers, low stock alerts, pending orders |
-| 🔗 Joins | 3/3 (100%) | ✅ | Customer orders, product categories, user last order |
-| ➕ Aggregations | 3/3 (100%) | ✅ | Count by status, average price, min/max by group |
-| 🛠️ Practical | 4/4 (100%) | ✅ | Duplicates, unique emails, stock updates, inactive users |
-
-**By Difficulty:**
-- **Basic** (17/17): Simple SELECT, WHERE, ORDER BY, basic JOINs
-- **Intermediate** (13/13): Multi-table JOINs, subqueries, aggregations, window functions
-
-**Overall:** 30/30 scenarios passed (100% success rate)
-
-### Checkpoint Evolution
-
-| Checkpoint | Epoch | Quality Score | SQL Valid | Real-World Test | Notes |
-|------------|-------|---------------|-----------|-----------------|-------|
-| Base Model | 0.0   | 0.0/10        | 0/30 (0%) | N/A | Only explanations, no SQL |
-| **Checkpoint-500** | **0.5** | **9.6/10** | **15/15 (100%)** | **Best** | **Production-ready** ⭐ **Selected for v0.3.0** |
-| Checkpoint-750 | 0.75 | 8.5/10     | 30/30 (100%) | Good | Solid performance |
-| Checkpoint-1000 | 1.0 | 9.0/10     | 30/30 (100%) | Better | Improved joins |
-| Checkpoint-1250 | 1.25 | 6.0/10     | 0/15 (0%) | **Poor** | Generates explanations instead of SQL (v0.2.1) |
-| Checkpoint-1500 | 1.5 | 9.2/10     | 30/30 (100%) | Slight degradation | Overfitting signs |
-
-**Conclusion**: Checkpoint-500 is optimal for production use. Checkpoint-1250 shows overfitting (generates text explanations instead of SQL).
-
-### Qualitative Analysis (Complex Scenarios)
-
-**Checkpoint-500 Performance** (v0.3.0) on 10 advanced SQL scenarios:
-
-| Scenario | CKP-500 (v0.3.0) | Status | Notes |
-|----------|------------------|--------|-------|
-| Multiple JOIN + Aggregation | 8/10 | ✅ Good | Correct JOINs, proper GROUP BY |
-| Correlated Subquery | 10/10 | ✅ Excellent | Perfect NOT EXISTS usage |
-| Window Function | 9/10 | ✅ Excellent | ROW_NUMBER + PARTITION correct |
-| Recursive CTE | 2/10 | ❌ Weak | Uses self-join instead of WITH RECURSIVE |
-| UNION + Aggregations | 3/10 | ❌ Weak | Uses JOIN instead of UNION |
-| Subquery in SELECT/WHERE | 5/10 | ⚠️ Fair | Correct structure, wrong calculation |
-| Complex HAVING | 9/10 | ✅ Excellent | COUNT(*) + HAVING perfect |
-| Multiple LEFT JOIN | 6/10 | ⚠️ Fair | Uses INNER JOIN, misses NULL checks |
-| Nested CASE WHEN | 5/10 | ⚠️ Fair | Simple CASE, doesn't nest deeply |
-| EXISTS vs IN | 10/10 | ✅ Excellent | Optimal query structure |
-| **AVERAGE** | **6.7/10** | | Best checkpoint for production (v0.3.0) |
-
-### Strengths & Limitations
-
-**Strengths** ✅ (v0.3.0):
-- ✅ **Perfect on practical queries**: 100% (30/30) real-world scenarios
-- ✅ **Excellent JOINs**: INNER JOIN, multi-table joins work perfectly (✅ **IMPROVED** - no more repetitive output)
-- ✅ **Strong aggregations**: SUM, COUNT, AVG, GROUP BY, HAVING (✅ **IMPROVED** - clean multi-table aggregations)
-- ✅ **Percentage calculations**: ✅ **NEW** - Correct `(value * 100.0 / total)` formula generation
-- ✅ **Subqueries**: IN, correlated subqueries (NOT EXISTS still has issues)
-- ✅ **Date handling**: EXTRACT, BETWEEN, INTERVAL
-- ✅ **Filters**: WHERE, LIKE, IN, multiple conditions
-- ✅ **Window functions**: ROW_NUMBER(), PARTITION BY
-- ✅ **Clean output**: Concise SQL, no over-explanation
-
-**Known Limitations** ⚠️ (Updated for v0.3.0):
-- ❌ **Recursive CTEs**: Cannot generate proper `WITH RECURSIVE` - uses subquery instead (NOT RESOLVED)
-- ❌ **UNION queries**: Still mixes UNION with unnecessary WHERE clauses (NOT RESOLVED)
-- ❌ **LEFT JOIN with NULL**: Still prefers INNER JOIN with incorrect NULL logic (NOT RESOLVED)
-- ✅ **Complex percentages**: ✅ **RESOLVED** - Now generates correct `(value * 100.0 / total)` formula
-- ⚠️ **Nested CASE WHEN**: Only generates simple 2-level CASE, not deeply nested (NOT RESOLVED)
-- ⚠️ **Column aliases**: Improved but occasional ORDER BY alias errors may still occur (PARTIALLY RESOLVED)
-- ❌ **NOT EXISTS**: Still generates incorrect INNER JOIN + NOT EXISTS combination (NOT RESOLVED)
-
-**Production Readiness** 🎯:
-- ✅ Use for: E-commerce, CRM, Analytics, Reports, Dashboards (95% of real use cases)
-- ⚠️ Avoid for: Data warehousing with recursive hierarchies, complex UNION operations
-- ✅ Safe for: Web applications, REST APIs, admin panels, business reports
-
-**Recommended**: Use Checkpoint-500 (v0.3.0) for production (9.6/10 quality score, 100% success on practical queries, 15/15 valid SQL in comparison tests). Avoid v0.2.1 (checkpoint-1250) which generates explanations instead of SQL.
-
-## Installation & Usage
-
-### From Package (.expert file)
+### Build Package
 
 ```bash
-# 1. Download or build the package
-expert-cli package --manifest manifest.json --weights weights
-
-# 2. Install the expert
-expert-cli install expert-sql-qwen3-0-6b.v0.3.0.expert
-
-# 3. Use in chat
-expert-cli chat --experts sql
+cd F:/Node/hivellm/expert/experts/expert-sql
+../../cli/target/release/expert-cli package --manifest manifest.json --weights weights
+# Outputs expert-sql-qwen3-0-6b.v0.3.0.expert (~26 MB) + .sha256
 ```
 
-### Package Structure (v0.3.0)
+`manifest.json` sets `packaging_checkpoint: "checkpoint-1250"` so packaging pulls the tuned checkpoint rather than the final training step.
 
-**Package Naming:**
+### Package Layout
+
 ```
 expert-sql-qwen3-0-6b.v0.3.0.expert
-│       │       │         │      └─ Extension (.expert = HiveLLM expert package)
-│       │       │         └─────── Version (semver: 0.3.0)
-│       │       └───────────────── Base model (Qwen3-0.6B normalized)
-│       └───────────────────────── Expert name
-└───────────────────────────────── Prefix
+├── manifest.json
+├── adapter_config.json
+├── adapter_model.safetensors
+├── tokenizer.json
+├── tokenizer_config.json
+├── special_tokens_map.json
+├── training_args.bin
+├── vocab.json
+├── README.md
+├── grammar.gbnf
+└── LICENSE
 ```
 
-The `.expert` package contains all files in the **root** (no subdirectories):
+All artifacts live at the package root for loader compatibility (Linux, macOS, Windows).
 
-```
-expert-sql-qwen3-0-6b.v0.3.0.expert (tar.gz, ~26 MB)
-├── manifest.json                 # Expert metadata and configuration
-├── adapter_config.json           # PEFT adapter configuration (DoRA)
-├── adapter_model.safetensors     # DoRA adapter weights (25.8 MB)
-├── tokenizer.json                # Tokenizer vocabulary (11.4 MB)
-├── tokenizer_config.json         # Tokenizer configuration
-├── special_tokens_map.json       # Special tokens mapping
-├── training_args.bin             # Training hyperparameters
-├── vocab.json                    # Vocabulary mappings (2.8 MB)
-├── README.md                     # Documentation
-├── grammar.gbnf                  # SQL GBNF grammar (PostgreSQL-based)
-└── LICENSE                       # CC-BY-4.0 license
-```
-
-**Key Features:**
-- ✅ All files in root (no nested directories) - easier loading
-- ✅ Checkpoint-1250 included (best performance, not final)
-- ✅ SHA256 checksum included for integrity verification
-- ✅ Compatible with expert-cli v0.2.3+
-- ✅ Cross-platform (Linux, macOS, Windows with tar support)
-
-### Building the Package
-
-```bash
-# From expert-sql directory
-cd F:/Node/hivellm/expert/experts/expert-sql
-
-# Create package (uses checkpoint-1250 from manifest)
-../../cli/target/release/expert-cli package --manifest manifest.json --weights weights
-
-# Output: expert-sql-qwen3-0-6b.v0.3.0.expert (~26 MB)
-# Checksum: expert-sql-qwen3-0-6b.v0.3.0.expert.sha256
-```
-
-**How Checkpoint Selection Works:**
-
-The manifest contains `packaging_checkpoint: "checkpoint-1250"` which tells the packaging system to use checkpoint-1250 instead of the final checkpoint. This is crucial when the best model is not the last trained checkpoint.
-
-```json
-{
-  "training": {
-    "packaging_checkpoint": "checkpoint-1250"
-  }
-}
-```
-
-The system will:
-1. Read the `packaging_checkpoint` field
-2. Adjust adapter paths from `final` → `checkpoint-1250`
-3. Extract files from `weights/qwen3-06b/checkpoint-1250/`
-4. Place all files in the **root** of the package
-5. Generate SHA256 checksum
-
-### Testing the Package
+### Integrity & Smoke Tests
 
 ```powershell
-# Test packaged expert inference
-.\test_packaged_expert.ps1
-
-# This will:
-# 1. Extract the package
-# 2. Validate structure (11 files in root)
-# 3. Run 3 SQL generation tests
-# 4. Clean up
-```
-
-Expected output: **3/3 queries generated successfully**
-
-### Verifying Package Integrity
-
-```bash
-# Verify SHA256 checksum
+.\test_packaged_expert.ps1          # Extract, validate structure, run 3 inference checks
 sha256sum -c expert-sql-qwen3-0-6b.v0.3.0.expert.sha256
-
-# Expected output:
-# expert-sql-qwen3-0-6b.v0.3.0.expert: OK
 ```
 
-**Package Info:**
-- **Size**: ~26 MB (compressed)
-- **Format**: tar.gz
-- **Checksum**: Included in `.sha256` file
-- **Extraction**: Standard tar/gzip tools
-- **Compatibility**: Linux, macOS, Windows (with tar support)
-
-## Testing
-
-### Packaged Inference Test
-
-**Quick validation** that the packaged expert works correctly:
+## Testing & Benchmarking
 
 ```powershell
-# Test inference from .expert package
-.\test_packaged_expert.ps1
+.\test.ps1 -TestSuite comparison       # Base vs expert regression suite
+.\test.ps1 -TestSuite comprehensive    # 50+ SQL patterns
+.\test.ps1 -TestSuite advanced         # Window functions, CTEs, set ops
+.\run_all_tests.ps1 [-QuickTest|-SkipAdvanced]
+.\benchmark_performance.ps1 [-Iterations 50] [-DetailedOutput]
 ```
 
-Expected output: 3/3 SQL queries generated successfully.
-
-### Comparison Tests (Base vs Expert)
-
-Validate that the expert outperforms the base model:
-
-```powershell
-# Run automated comparison tests
-.\test.ps1 -TestSuite comparison
-
-# Run interactive comparison with custom examples
-.\run_interactive_comparison.ps1
-```
-
-**Test Results**: See test output for detailed analysis.
-
-**Key Findings** (v0.3.0):
-- ✅ **100% success rate** - 30/30 real-world scenarios
-- ✅ **Perfect JOINs**: Multi-table joins work flawlessly
-- ✅ **Strong aggregations**: GROUP BY, HAVING, window functions
-- ✅ **Production-ready**: Safe for web apps, APIs, dashboards
-
-### Available Test Suites
-
-```powershell
-# Quick test - Basic comparison only
-.\test.ps1 -TestSuite comparison
-
-# Comprehensive test - 50+ SQL patterns
-.\test.ps1 -TestSuite comprehensive
-
-# Advanced test - Window functions, CTEs, complex patterns
-.\test.ps1 -TestSuite advanced
-
-# Run ALL test suites with detailed reporting
-.\run_all_tests.ps1
-
-# Quick mode (comparison only)
-.\run_all_tests.ps1 -QuickTest
-
-# Skip advanced tests (faster)
-.\run_all_tests.ps1 -SkipAdvanced
-```
-
-### Test Coverage
-
-The test suites cover **100+ different SQL scenarios**:
-
-**Basic Patterns** (test_comparison.py):
-- ✓ Simple SELECT with WHERE
-- ✓ COUNT aggregations
-- ✓ JOIN operations
-- ✓ GROUP BY aggregations
-- ✓ BETWEEN filtering
-
-**Comprehensive Patterns** (test_comprehensive.py):
-- ✓ Subqueries (WHERE, FROM, SELECT)
-- ✓ Multiple JOINs (3+ tables)
-- ✓ LEFT/RIGHT/OUTER JOINs
-- ✓ Multiple aggregations (AVG, SUM, COUNT, MIN, MAX)
-- ✓ HAVING clause
-- ✓ ORDER BY + LIMIT + OFFSET
-- ✓ DISTINCT and COUNT(DISTINCT)
-- ✓ CASE WHEN statements
-- ✓ NULL handling (IS NULL, IS NOT NULL, COALESCE)
-- ✓ Date filtering
-- ✓ String functions (LIKE, concatenation)
-- ✓ Complex filtering (IN, AND/OR combinations)
-
-**Advanced Patterns** (test_advanced.py):
-- ✓ Window functions (ROW_NUMBER, RANK, DENSE_RANK)
-- ✓ PARTITION BY
-- ✓ Running totals (SUM OVER)
-- ✓ Common Table Expressions (CTEs with WITH)
-- ✓ Multiple CTEs
-- ✓ Set operations (UNION, UNION ALL, INTERSECT)
-- ✓ Self-joins
-- ✓ GROUP BY multiple columns
-- ✓ Conditional aggregations
-- ✓ Correlated subqueries (EXISTS, NOT EXISTS)
-- ✓ Mathematical operations
-- ✓ Top-N per group queries
-
-### Performance Benchmarking
-
-```powershell
-# Benchmark inference speed and memory usage
-.\benchmark_performance.ps1
-
-# Run 50 iterations for more accurate results
-.\benchmark_performance.ps1 -Iterations 50
-
-# Show detailed output for each iteration
-.\benchmark_performance.ps1 -DetailedOutput
-```
-
-## Usage
-
-### Interactive Chat
-
-```bash
-# Start interactive SQL generation
-expert-cli chat --experts sql
-
-# Example queries:
-> List all users who registered in the last 30 days
-> Show top 10 products by revenue with category
-> Find customers who never made an order
-```
-
-### Single Query Mode
-
-```bash
-# Generate single SQL query
-expert-cli chat --experts sql --prompt "List all users who made orders in 2024"
-```
-
-### Python Integration
-
-```python
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from peft import PeftModel
-
-# Load base model
-base_model_path = "F:/Node/hivellm/expert/models/Qwen3-0.6B"
-base_model = AutoModelForCausalLM.from_pretrained(
-    base_model_path,
-    device_map="auto",
-    torch_dtype=torch.bfloat16,
-    trust_remote_code=True
-)
-
-tokenizer = AutoTokenizer.from_pretrained(base_model_path, trust_remote_code=True)
-
-# Load expert adapter (from extracted package or checkpoint)
-adapter_path = "experts/expert-sql"  # or path to extracted .expert
-model = PeftModel.from_pretrained(base_model, adapter_path)
-
-# Generate SQL
-schema = "CREATE TABLE users (id INT, name VARCHAR, email VARCHAR, created_at DATE)"
-question = "List users registered in 2024"
-
-messages = [
-    {"role": "system", "content": f"Dialect: sql\nSchema:\n{schema}"},
-    {"role": "user", "content": question}
-]
-
-text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-inputs = tokenizer([text], return_tensors="pt").to(model.device)
-
-with torch.no_grad():
-    outputs = model.generate(
-        **inputs,
-        max_new_tokens=150,
-        temperature=0.7,
-        top_p=0.8,
-        top_k=20
-    )
-
-sql = tokenizer.decode(outputs[0][inputs['input_ids'].shape[1]:], skip_special_tokens=True)
-print(sql)
-# Output: SELECT * FROM users WHERE EXTRACT(YEAR FROM created_at) = 2024;
-```
-
-## Dataset
-
-### Sources: Multi-dataset
-
-**Primary Sources:**
-
-1. **gretelai/synthetic_text_to_sql**
-   - High-quality synthetic SQL generation
-   - MySQL→SQL dialect conversion applied
-   - Validated with sqlglot (99.93% valid)
-
-2. **Clinton/Text-to-sql-v1**
-   - Large-scale text-to-SQL dataset
-   - SQLite→SQL dialect conversion applied
-   - Schema-aware queries
-
-3. **synthetic_fixes (manual)**
-   - Manually curated examples targeting critical deficiencies
-   - Focuses on: SQL date syntax (DATE_TRUNC), window functions, NOT EXISTS, CTEs, multi-table JOINs
-   - Created to address identified weaknesses
-
-**Additional Data Sources:**
-- **[bigcode/the-stack](https://huggingface.co/datasets/bigcode/the-stack/tree/main/data)** - Large-scale code dataset with SQL samples across multiple programming languages and database systems
-
-**Combined Dataset:**
-- **Validated training examples** from multiple high-quality sources
-- **Tasks**: Text-to-SQL with schema context
-- **Languages**: English (Portuguese filtered out)
-- **Dialect**: SQL (normalized from PostgreSQL, MySQL, SQLite)
-- **Quality**: Validated with sqlglot, deduplicated (2,855 duplicates removed)
-
-### Why These Datasets?
-
-✅ **Higher Quality**: Synthetic generation with validation from multiple sources  
-✅ **Better Coverage**: Diverse SQL patterns (SELECT, JOIN, subqueries, aggregations, window functions)  
-✅ **Clean Syntax**: Multi-dialect normalization (MySQL/SQLite→SQL)  
-✅ **Optimized Size**: Text-only format (77% smaller than original)  
-✅ **Real-world patterns**: Covers e-commerce, CRM, analytics use cases  
-✅ **Targeted fixes**: Manual examples address critical deficiencies (NOT EXISTS, window functions, CTEs)
-
-**Preprocessing Applied**:
-- Multi-dialect conversion (MySQL/SQLite→SQL normalization)
-- Invalid SQL removed via sqlglot validation
-- Deduplicated by question (2,855 duplicates removed)
-- Language filtering (Portuguese instructions removed, English only)
-- ChatML formatted for Qwen3 native support
-
-### Dataset Structure (After Preprocessing)
-
-```json
-{
-  "text": "<|system|>\nDialect: sql\nSchema:\nCREATE TABLE users (id INT, name VARCHAR)...\n<|end|>\n<|user|>\nShow all users\n<|end|>\n<|assistant|>\nSELECT * FROM users;\n<|end|>"
-}
-```
-
-### Validation & Testing
-
-**Dataset Quality:**
-- ✅ Multiple high-quality sources combined
-- ✅ Duplicates removed during integration
-- ✅ Multi-dialect normalization (MySQL/SQLite→SQL)
-- ✅ English-only instructions (Portuguese filtered)
-- ✅ Consistent ChatML formatting
-
-**Model Quality (Checkpoint-1250):**
-- ✅ 30/30 real-world scenarios (100%)
-- ✅ 6.7/10 average on complex edge cases
-- ✅ Syntax correctness: 100%
-- ✅ Production-ready for web applications
+Results summary (v0.3.0, checkpoint-500):
+- 30/30 production scenarios succeed across e-commerce, CRM, analytics
+- Syntax validity 100%, inference latency ~100-150 ms (RTX 4090)
+- Complex scenario score average: 6.7/10 (strong on joins, weak on recursion/UNION)
 
 ## Troubleshooting
-
-### Low Quality Output
-
-**Current Status**: Quality is excellent (12.4/10) with checkpoint-500.
-
-If retraining from scratch:
-1. ✅ **Use validated dataset**: gretelai/synthetic_text_to_sql with preprocessing
-2. ✅ **Enable Unsloth**: Set `use_unsloth: true` in manifest
-3. ✅ **Use recommended params**: LR 5e-5, dropout 0.1, warmup_ratio 0.1
-4. ⚠️ **Don't overtrain**: Model converges at 25% of epoch 1
-
-### Training OOM (Out of Memory) - Windows
-
-**Windows-specific fixes applied**:
-1. ✅ **Small batch_size**: 2 (safe for Windows)
-2. ✅ **High gradient_accumulation**: 45 (effective batch = 90)
-3. ✅ **Disabled torch_compile**: Triton incompatible on Windows
-4. ✅ **Unsloth enabled**: 70% VRAM reduction
-
-If still OOM:
-1. Reduce `max_seq_length` from 800 to 512
-2. Enable `gradient_checkpointing: true`
-3. Reduce `gradient_accumulation_steps` to 30
-
-### Slow Training
-
-**Current**: 2x faster with Unsloth. Expected ~2-3 hours for full training.
-
-If slower:
-1. ✅ **Verify Unsloth**: Check `use_unsloth: true` in manifest
-2. ✅ **Check CUDA**: `nvidia-smi` should show GPU usage
-3. ✅ **Verify SDPA**: Ensure `use_sdpa: true`
-4. ⚠️ **Don't use torch_compile**: Disabled on Windows (Triton issue)
-
-### Unicode Errors (Windows Console)
-
-**Fixed**: All Unicode arrows (→) replaced with ASCII (->).
-
-If you see encoding errors:
-1. Use PowerShell instead of CMD
-2. Set console to UTF-8: `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8`
+- **Quality dips:** confirm `use_unsloth: true`, avoid extending beyond 0.5 epoch without evaluation.
+- **OOM on Windows:** batch size 2 + gradient accumulation 45; reduce sequence length or enable gradient checkpointing if needed.
+- **Slow training:** verify CUDA availability (`nvidia-smi`), keep `torch_compile` disabled on Windows.
+- **Console encoding:** use PowerShell and set UTF-8 (`[Console]::OutputEncoding = [System.Text.Encoding]::UTF8`).
 
 ## Version History
 
-### v0.3.0 (Current - Production Ready) - 2025-01-XX
+### v0.3.0 (Production)
+- Expanded dataset blend (gretelai, Clinton, synthetic_fixes)
+- SQL dialect normalized to generic `sql`
+- Checkpoint-500 selected (15/15 valid SQL, 9.6/10 quality)
+- Improved deduplication (2,855 questions removed) and English-only prompts
 
-**Major Improvements:**
-- ✅ **Expanded dataset** - Multiple sources integrated
-- ✅ **Clinton/Text-to-sql-v1 integration** - Added high-quality examples
-- ✅ **Synthetic fixes dataset** - Manually curated examples targeting critical deficiencies
-- ✅ **SQL dialect normalization** - Changed from "postgres" to "sql" for broader compatibility
-- ✅ **Language filtering** - English-only dataset (Portuguese removed)
-- ✅ **Improved deduplication** - 2,855 duplicates removed during integration
-- ✅ **Checkpoint-500 optimization** - Best performing checkpoint selected for packaging
+### v0.2.0
+- Packaging format flattened (no nested directories)
+- Added manifest checkpoint selection
+- 30/30 real-world scenarios validated with checkpoint-1250
+- Known gaps: recursive CTEs, UNION, LEFT JOIN null handling
 
-**Training Results:**
-- Dataset: Multi-source
-  - gretelai/synthetic_text_to_sql
-  - Clinton/Text-to-sql-v1
-  - synthetic_fixes
-- Training method: DoRA r=12 + Unsloth (2x faster, 70% less VRAM)
-- Quality score: **9.6/10** on real-world benchmark (checkpoint-500)
-- Checkpoint evolution tested: 500 → 750 → 1000 → 1250 → 1500
-- **Best checkpoint**: checkpoint-500 (15/15 valid SQL, 11/15 correct keywords)
-- Windows compatible (CUDA 12.1, RTX 4090)
-
-**Version Comparison (v0.3.0 vs v0.2.1):**
-
-| Test Case | v0.2.1 (checkpoint-1250) | v0.3.0 (checkpoint-500) | Winner |
-|-----------|--------------------------|-------------------------|--------|
-| SQL Generation Quality | ❌ Generates explanations/text instead of SQL | ✅ Generates valid SQL queries | **v0.3.0** |
-| Simple SELECT queries | ❌ No SQL output | ✅ `SELECT * FROM usuarios` | **v0.3.0** |
-| WHERE clauses | ❌ Generates unrelated code | ✅ `SELECT AVG(preco) FROM produtos WHERE preco <` | **v0.3.0** |
-| Query Consistency | ⚠️ Inconsistent behavior | ✅ More consistent SQL generation | **v0.3.0** |
-| Checkpoint Selection | checkpoint-1250 (overfitted) | checkpoint-500 (optimal) | **v0.3.0** |
-
-**Key Findings:**
-- ✅ **v0.3.0 significantly outperforms v0.2.1** in SQL generation quality
-- ✅ **checkpoint-500** (v0.3.0) produces valid SQL while checkpoint-1250 (v0.2.1) generates explanations
-- ✅ **v0.3.0** uses checkpoint-500 which showed best performance in comparison tests (15/15 valid SQL)
-- ⚠️ **v0.2.1** appears to have overfitting issues, generating text explanations instead of SQL
-- ✅ **Recommendation**: Use v0.3.0 for all production deployments
-
-### v0.2.0 - 2025-11-06
-
-**Major Improvements:**
-- ✅ **Checkpoint-1250 selected** - Best balance of quality (9.6/10) vs generalization
-- ✅ **100% real-world success** - Tested on 30 practical scenarios (e-commerce, CRM, analytics)
-- ✅ **Enhanced packaging** - All files in root, no nested directories
-- ✅ **Packaging checkpoint selection** - Manifest can specify best checkpoint (not just final)
-- ✅ **Backward compatible loading** - Supports both old and new package structures
-- ✅ **Comprehensive documentation** - Known limitations and strengths clearly documented
-- ✅ **Production validation** - Tested with real extraction and inference
-
-**Training Results:**
-- Dataset: gretelai/synthetic_text_to_sql
-- Training method: DoRA r=12 + Unsloth (2x faster, 70% less VRAM)
-- Quality score: **9.6/10** on real-world benchmark
-- Checkpoint evolution tested: 750 → 1000 → **1250 (Best)** → 1500 (degradation)
-- Windows compatible (CUDA 12.1, RTX 4090)
-
-**Known Limitations:**
-- ❌ Recursive CTEs (uses self-join instead)
-- ❌ UNION operations (uses JOIN with OR)
-- ❌ LEFT JOIN with NULL checks
-- ⚠️ Complex percentage calculations
-- ⚠️ Deeply nested CASE WHEN
-
-**Package Structure Changes:**
-- **Old (v0.0.1)**: `weights/adapter/adapter_model.safetensors`
-- **New (v0.2.0+)**: `adapter_model.safetensors` (root level)
-- All 11 files now in package root for easier loading
-
-### v0.0.1 - 2025-11-03
-- ✅ Initial release with checkpoint-500
-- ✅ Basic SQL generation capabilities
-- ⚠️ Limited testing on real-world scenarios
-- ⚠️ Nested directory structure in packages
-
-### Training Stats
-- **Dataset processing**: ~5 minutes (sqlglot validation)
-- **Training time**: ~3-4 hours for 1.5 epochs (RTX 4090 + Unsloth)
-- **Optimal checkpoint**: Checkpoint-500 (0.5 epochs) - **Best for v0.3.0**
-- **Production checkpoint**: checkpoint-500 (best quality/generalization balance, 15/15 valid SQL)
-- **VRAM peak**: 0.56GB (training), 18MB (inference overhead)
-- **Test coverage**: 30 real-world scenarios + 10 complex edge cases + version comparison (v0.2.1 vs v0.3.0)
-- **Version comparison**: v0.3.0 (checkpoint-500) significantly outperforms v0.2.1 (checkpoint-1250)
-
-## Credits
-
-- **Base Model**: Qwen/Qwen3-0.6B
-- **Datasets**: 
-  - gretelai/synthetic_text_to_sql
-  - Clinton/Text-to-sql-v1
-  - synthetic_fixes (manually created)
-  - [bigcode/the-stack](https://huggingface.co/datasets/bigcode/the-stack/tree/main/data) - Large-scale code dataset
-- **Training**: Unsloth (2x speedup)
-- **Validation**: sqlglot (SQL parsing)
-- **Framework**: HuggingFace Transformers + PEFT + TRL
+### v0.0.1
+- Initial DoRA release leveraging checkpoint-500
+- Baseline packaging layout with nested weights (deprecated)
 
 ## License
 
 CC-BY-4.0
-
-## Tags
-
-sql, database, text2sql, query-generation, postgres, qwen3, dora, unsloth, windows
