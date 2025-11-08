@@ -2,7 +2,7 @@
   "name": "expert-sql",
   "version": "0.3.0",
   "schema_version": "2.0",
-  "description": "Production-ready SQL query generation expert. Trained on 147,140 validated examples from multiple sources with 9.6/10 quality score. Excellent for e-commerce, CRM, analytics, and business reports. Checkpoint-1250 optimized for real-world queries.",
+  "description": "SQL query generation expert focado em respostas consistentes e curtas. Treinado em 147.140 exemplos validados de múltiplas fontes. Esta versão (0.3.0) utiliza o checkpoint-500 — avaliado com 100% de SQL válido em 15 cenários de teste e melhorias em consultas JOIN/HAVING em comparação ao pacote v0.2.1.",
   "author": "hivellm",
   "homepage": "https://github.com/hivellm/expert-sql",
   
@@ -28,10 +28,10 @@
           "alpha": 24,
           "scaling": "dora",
           "dropout": 0.1,
-          "path": "weights/qwen3-06b/checkpoint-1250",
+          "path": "qwen3-06b/checkpoint-500",
           "size_bytes": 0,
           "sha256": "",
-          "_comment": "Checkpoint-1250 (epoch 1.25): Production-ready with 9.6/10 quality. 100% success on 30 real-world scenarios. DoRA r=12 optimized for complex queries (joins, subqueries, window functions)."
+          "_comment": "Checkpoint-500 (epoch 0.5): Melhor equilíbrio entre completude e concisão. 100% das saídas válidas em 15 testes comparativos e melhores respostas em JOIN/HAVING versus v0.2.1."
         }
       ]
     }
@@ -217,30 +217,21 @@
       "_comment": "Unsloth/Qwen recommended settings: temp=0.7, top_p=0.8, top_k=20. Prevents repetition collapse. Grammar validation prevents syntax errors."
     },
     "trained_on": "2025-11-06",
-    "checkpoint": "1250",
-    "packaging_checkpoint": "checkpoint-1250",
-    "quality_score": 9.6,
+    "checkpoint": "500",
+    "packaging_checkpoint": "checkpoint-500",
+    "quality_score": 8.8,
     "test_scenarios": {
-      "real_world_queries": {
-        "total": 30,
-        "passed": 30,
+      "sql_consistency_suite": {
+        "total": 15,
+        "passed": 15,
         "success_rate": 100.0,
-        "categories": {
-          "ecommerce": "5/5",
-          "crm": "4/4",
-          "analytics": "4/4",
-          "filters": "4/4",
-          "reports": "3/3",
-          "joins": "3/3",
-          "aggregations": "3/3",
-          "practical": "4/4"
-        }
-      },
-      "complex_scenarios": {
-        "total": 10,
-        "average_score": 6.7,
-        "strengths": ["correlated_subqueries", "window_functions", "having_clause"],
-        "weaknesses": ["recursive_cte", "union_operations", "left_join_null"]
+        "metrics": {
+          "sql_valid": "15/15",
+          "keyword_coverage": "11/15",
+          "baseline_sql_valid": "0/15 (modelo base)",
+          "baseline_keyword": "9/15"
+        },
+        "notes": "Melhoria observada frente ao pacote v0.2.1: respostas mais curtas e com menos ruído em JOIN/HAVING/CASE."
       }
     },
     "base_model_version": "qwen3-0.6b-int4"
@@ -260,7 +251,6 @@
     "business-intelligence",
     "dora",
     "qwen3",
-    "production-ready",
-    "checkpoint-1250"
+    "checkpoint-500"
   ]
 }
