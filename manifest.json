@@ -73,11 +73,36 @@
   ],
   
   "limitations": [
-    "no_recursive_cte",
-    "no_union_operations",
-    "limited_left_join_null",
-    "limited_nested_case_when",
-    "limited_complex_percentages"
+    {
+      "pattern": "no_recursive_cte",
+      "description": "Recursive CTEs (WITH RECURSIVE) remain unreliable - rewrites into self-joins or subqueries instead of proper recursion",
+      "example": "Query: 'Find all ancestors' → Generates self-joins instead of WITH RECURSIVE",
+      "workaround": "Use iterative queries or provide explicit depth limit in prompt"
+    },
+    {
+      "pattern": "no_union_operations",
+      "description": "UNION / UNION ALL generates redundant predicates or swaps to JOIN-based rewrites",
+      "example": "Query: 'SELECT * FROM table1 UNION SELECT * FROM table2' → May add redundant WHERE clauses or convert to JOIN",
+      "workaround": "Use explicit UNION syntax and validate generated query structure"
+    },
+    {
+      "pattern": "limited_left_join_null",
+      "description": "LEFT JOIN with NULL checks may collapse back to INNER JOIN or misapply IS NULL conditions",
+      "example": "Query: 'LEFT JOIN ... WHERE right_table.id IS NULL' → May convert to INNER JOIN",
+      "workaround": "Provide explicit LEFT JOIN examples in schema context or use subqueries for null filtering"
+    },
+    {
+      "pattern": "limited_nested_case_when",
+      "description": "Consistent up to two levels; deeper nesting collapses to simpler branches",
+      "example": "Query with 3+ nested CASE WHEN statements → May simplify to 2 levels",
+      "workaround": "Break down complex CASE WHEN into multiple queries or use simpler conditional logic"
+    },
+    {
+      "pattern": "limited_complex_percentages",
+      "description": "May inject heuristic numeric predicates on aggregate/count prompts",
+      "example": "Query: 'Customers with more than 5 orders' → May add filters like 'orders.total > 50000'",
+      "workaround": "Provide explicit numeric thresholds in prompt or validate generated query manually"
+    }
   ],
   
   "routing": {
@@ -220,6 +245,16 @@
     "checkpoint": "500",
     "packaging_checkpoint": "checkpoint-500",
     "quality_score": 8.8,
+    "alternative_checkpoints": {
+      "checkpoint-1250": {
+        "path": "qwen3-06b/checkpoint-1250",
+        "step": 1250,
+        "score": 9.6,
+        "win_rate": 1.0,
+        "best_for": ["general_sql_generation"],
+        "_comment": "Checkpoint-1250 achieved 9.6/10 quality score but regresses to text explanations in some cases. Checkpoint-500 selected for consistent SQL output."
+      }
+    },
     "test_scenarios": {
       "sql_consistency_suite": {
         "total": 15,

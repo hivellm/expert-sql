@@ -26,12 +26,26 @@ import re
 import warnings
 import sys
 import io
+import os
 import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datasets import load_dataset, Dataset, DatasetDict
 from transformers import AutoTokenizer
 import gc
+
+# Add experts root directory to path to import common utils
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../'))
+
+# Import common preprocessing utilities for query-only sanitization
+try:
+    from common_preprocessing_utils import sanitize_chatml_response, extract_query_only
+except ImportError:
+    # Fallback if common utils not found
+    def sanitize_chatml_response(text: str, query_type: str = "auto") -> str:
+        return text.strip()
+    def extract_query_only(text: str, query_type: str = "auto") -> str:
+        return text.strip()
 
 # Suppress all warnings globally
 warnings.filterwarnings("ignore")
@@ -123,14 +137,72 @@ def fix_mysql_to_postgres(sql: str) -> str:
     return sql
 
 
+def is_cypher_or_sparql(text: str) -> bool:
+    """Detect if text is Cypher or SPARQL (not SQL)"""
+    if not text or not text.strip():
+        return False
+    
+    text_upper = text.upper().strip()
+    
+    # Cypher keywords that are NOT SQL
+    cypher_keywords = ['MATCH', 'MERGE', 'RETURN', 'WITH', 'UNWIND', 'CALL', 'FOREACH']
+    
+    # SPARQL keywords
+    sparql_keywords = ['PREFIX', 'FILTER', 'OPTIONAL', 'GRAPH', 'ASK', 'CONSTRUCT', 'DESCRIBE']
+    
+    # Check if starts with Cypher/SPARQL keywords (strong indicator)
+    if text_upper.startswith(('MATCH', 'MERGE', 'RETURN', 'WITH', 'UNWIND', 'CALL', 
+                               'FOREACH', 'PREFIX', 'ASK', 'CONSTRUCT', 'DESCRIBE')):
+        return True
+    
+    # Check for Cypher patterns
+    cypher_patterns = [
+        r'\([^)]*:\w+\)',  # (n:Label)
+        r'-\[[^\]]*:\w+\]-',  # -[:RELATIONSHIP]->
+        r'\bRETURN\s+.*\bWHERE\b',  # RETURN ... WHERE (Cypher pattern)
+    ]
+    
+    for pattern in cypher_patterns:
+        if re.search(pattern, text_upper):
+            return True
+    
+    # Check for SPARQL patterns
+    sparql_patterns = [
+        r'\bPREFIX\s+\w+:',  # PREFIX prefix:
+        r'\{\s*\?',  # { ?variable
+        r'\?\w+\s+\?\w+',  # ?var1 ?var2
+    ]
+    
+    for pattern in sparql_patterns:
+        if re.search(pattern, text_upper):
+            return True
+    
+    # If it has Cypher keywords but no SQL keywords, it's likely Cypher
+    has_cypher_kw = any(kw in text_upper for kw in cypher_keywords)
+    has_sql_kw = any(kw in text_upper for kw in ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE TABLE', 'FROM', 'JOIN'])
+    
+    if has_cypher_kw and not has_sql_kw:
+        return True
+    
+    return False
+
 def validate_postgres_sql(sql: str) -> Optional[str]:
     """
     Validate and fix SQL for PostgreSQL dialect.
     
+    CRITICAL: Rejects Cypher/SPARQL queries - only accepts SQL.
+    
     Returns:
         Fixed SQL if valid, None if cannot be fixed
     """
-    if not SQL_VALIDATION_AVAILABLE or not sql or not sql.strip():
+    if not sql or not sql.strip():
+        return None
+    
+    # CRITICAL: Filter out Cypher/SPARQL
+    if is_cypher_or_sparql(sql):
+        return None
+    
+    if not SQL_VALIDATION_AVAILABLE:
         return sql
     
     try:
@@ -187,11 +259,44 @@ def canonicalize_schema(schema: str, dialect: str = "postgres") -> str:
     return schema.strip()
 
 
+def generate_brief_reasoning(question: str, sql: str) -> str:
+    """Generate a brief reasoning statement for Qwen3 compatibility.
+    
+    Qwen3 uses hybrid reasoning, so we include concise reasoning that leads to the query.
+    This helps the model understand when to use reasoning vs direct output.
+    """
+    # Extract key information from question and SQL
+    sql_upper = sql.upper()
+    
+    # Detect what the query is doing
+    if 'SELECT' in sql_upper:
+        if 'JOIN' in sql_upper:
+            reasoning = f"I need to join tables to retrieve related data."
+        elif 'GROUP BY' in sql_upper:
+            reasoning = f"I need to aggregate data by grouping rows."
+        elif 'ORDER BY' in sql_upper:
+            reasoning = f"I need to retrieve and sort data based on the criteria."
+        else:
+            reasoning = f"I need to retrieve data from the database."
+    elif 'INSERT' in sql_upper:
+        reasoning = f"I need to insert new data into the database."
+    elif 'UPDATE' in sql_upper:
+        reasoning = f"I need to update existing data in the database."
+    elif 'DELETE' in sql_upper:
+        reasoning = f"I need to delete data from the database."
+    elif 'CREATE' in sql_upper:
+        reasoning = f"I need to create a new database object."
+    else:
+        reasoning = f"I need to construct a SQL query to answer the question."
+    
+    return reasoning
+
 def format_example(
     example: Dict[str, Any],
     dialect: str = "postgres",
     use_chatml: bool = True,
-    validate_sql: bool = True
+    validate_sql: bool = True,
+    include_reasoning: bool = False
 ) -> Optional[str]:
     """
     Format a single example with schema, question, and answer.
@@ -227,14 +332,28 @@ def format_example(
     # Canonicalize schema
     schema = canonicalize_schema(schema, dialect)
     
+    # CRITICAL: Sanitize SQL to ensure query-only (no reasoning/explanation)
+    answer_clean = sanitize_chatml_response(answer, query_type="sql")
+    if not answer_clean:
+        answer_clean = extract_query_only(answer, query_type="sql")
+    
+    # For Qwen3 compatibility: optionally wrap in reasoning block
+    # Qwen3 uses hybrid reasoning: 75% reasoning + 25% direct (as per Qwen3 training notebook)
+    if include_reasoning:
+        # Generate a brief reasoning that leads to the SQL query
+        reasoning = generate_brief_reasoning(question, answer_clean)
+        assistant_content = f"<think>\n{reasoning}\n</think>\n{answer_clean}"
+    else:
+        assistant_content = answer_clean
+    
     if use_chatml:
-        # ChatML format (Qwen3 default)
-        text = f"<|system|>\nDialect: {dialect}\nSchema:\n{schema}<|end|>\n"
-        text += f"<|user|>\n{question}<|end|>\n"
-        text += f"<|assistant|>\n{answer}<|end|>"
+        # Qwen3 format: <|im_start|>role\ncontent<|im_end|>
+        text = f"<|im_start|>system\nDialect: {dialect}\nSchema:\n{schema}<|im_end|>\n"
+        text += f"<|im_start|>user\n{question}<|im_end|>\n"
+        text += f"<|im_start|>assistant\n{assistant_content}<|im_end|>\n"
     else:
         # Simple format
-        text = f"Schema: {schema}\n\nQuestion: {question}\n\nAnswer: {answer}"
+        text = f"Schema: {schema}\n\nQuestion: {question}\n\nAnswer: {answer_clean}"
     
     return text
 
@@ -277,16 +396,30 @@ def detect_sql_type(sql: str) -> str:
 
 
 def extract_sql_from_chatml(text: str) -> str:
-    """Extract SQL query from ChatML text."""
-    # Try standard ChatML format
+    """Extract SQL query from ChatML or Qwen3 format text."""
+    # Try Qwen3 format first (<|im_start|>assistant\n...<|im_end|>)
+    match = re.search(r'<\|im_start\|>assistant\n(.*?)<\|im_end\|>', text, re.DOTALL)
+    if match:
+        sql = match.group(1).strip()
+        if sql:
+            return sql
+    
+    # Try standard ChatML format (<|assistant|>\n...<|end|>)
     match = re.search(r'<\|assistant\|>\s*\n(.*?)\n<\|end\|>', text, re.DOTALL)
     if match:
         sql = match.group(1).strip()
         if sql:
             return sql
     
-    # Try without newline after assistant tag
+    # Try without newline after assistant tag (ChatML)
     match = re.search(r'<\|assistant\|>(.*?)<\|end\|>', text, re.DOTALL)
+    if match:
+        sql = match.group(1).strip()
+        if sql:
+            return sql
+    
+    # Try Qwen3 format without newline
+    match = re.search(r'<\|im_start\|>assistant(.*?)<\|im_end\|>', text, re.DOTALL)
     if match:
         sql = match.group(1).strip()
         if sql:
@@ -391,41 +524,78 @@ def preprocess_dataset(
         print("      SQL validation: DISABLED")
     
     invalid_count = 0
+    reasoning_counter = 0  # Counter for reasoning distribution (75% reasoning + 25% direct)
     
     def process_example(example):
-        nonlocal invalid_count
+        nonlocal invalid_count, reasoning_counter
         
         # Check if already in ChatML format (has "text" field)
         if "text" in example and example["text"]:
             text = example["text"]
-            # Extract question from ChatML for deduplication
-            question_match = re.search(r'<\|user\|>\s*\n(.*?)\n<\|end\|>', text, re.DOTALL)
+            # Extract question from Qwen3 or ChatML format for deduplication
+            # Try Qwen3 format first
+            question_match = re.search(r'<\|im_start\|>user\n(.*?)<\|im_end\|>', text, re.DOTALL)
             if question_match:
                 question = question_match.group(1).strip()
             else:
-                # Fallback: extract from user tag without newline
-                question_match = re.search(r'<\|user\|>(.*?)<\|end\|>', text, re.DOTALL)
+                # Try ChatML format
+                question_match = re.search(r'<\|user\|>\s*\n(.*?)\n<\|end\|>', text, re.DOTALL)
                 if question_match:
                     question = question_match.group(1).strip()
                 else:
-                    question = text[:100]  # Fallback: use first 100 chars
+                    # Fallback: extract from user tag without newline (ChatML)
+                    question_match = re.search(r'<\|user\|>(.*?)<\|end\|>', text, re.DOTALL)
+                    if question_match:
+                        question = question_match.group(1).strip()
+                    else:
+                        # Try Qwen3 without newline
+                        question_match = re.search(r'<\|im_start\|>user(.*?)<\|im_end\|>', text, re.DOTALL)
+                        if question_match:
+                            question = question_match.group(1).strip()
+                        else:
+                            question = text[:100]  # Fallback: use first 100 chars
             
             # Validate SQL if requested (extract from assistant tag)
             if validate_sql:
-                sql = extract_sql_from_chatml(text)
-                if sql:
+                sql_raw = extract_sql_from_chatml(text)
+                if sql_raw:
+                    # CRITICAL: Sanitize SQL to ensure query-only (no reasoning/explanation)
+                    sql = sanitize_chatml_response(sql_raw, query_type="sql")
+                    if not sql:
+                        sql = extract_query_only(sql_raw, query_type="sql")
+                    
+                    # CRITICAL: Filter out Cypher/SPARQL queries
+                    if is_cypher_or_sparql(sql):
+                        invalid_count += 1
+                        return {"text": "", "question": question, "valid": False}
+                    
                     fixed_sql = validate_postgres_sql(sql)
                     if fixed_sql is None:
                         invalid_count += 1
                         return {"text": "", "question": question, "valid": False}
-                    # Replace SQL in text if it was fixed
-                    if fixed_sql != sql:
-                        text = re.sub(
-                            r'(<\|assistant\|>\s*\n)(.*?)(\n<\|end\|>)',
-                            lambda m: f"{m.group(1)}{fixed_sql}{m.group(3)}",
-                            text,
-                            flags=re.DOTALL
-                        )
+                    
+                    # Rebuild ChatML with sanitized SQL
+                    question_match = re.search(r'<\|im_start\|>user\n(.*?)<\|im_end\|>', text, re.DOTALL)
+                    question = question_match.group(1).strip() if question_match else ""
+                    system_match = re.search(r'<\|im_start\|>system\n(.*?)<\|im_end\|>', text, re.DOTALL)
+                    system_content = system_match.group(1).strip() if system_match else f"Dialect: {dialect}"
+                    
+                    # Rebuild with clean SQL
+                    # Qwen3 uses hybrid reasoning: 75% reasoning + 25% direct (as per Qwen3 training notebook)
+                    include_reasoning = (reasoning_counter % 4 != 0)  # 75% with reasoning (3 out of 4)
+                    reasoning_counter += 1
+                    
+                    if include_reasoning:
+                        reasoning = generate_brief_reasoning(question, fixed_sql)
+                        assistant_content = f"<think>\n{reasoning}\n</think>\n{fixed_sql}"
+                    else:
+                        assistant_content = fixed_sql
+                    
+                    text = (
+                        f"<|im_start|>system\n{system_content}<|im_end|>\n"
+                        f"<|im_start|>user\n{question}<|im_end|>\n"
+                        f"<|im_start|>assistant\n{assistant_content}<|im_end|>\n"
+                    )
             
             return {"text": text, "question": question, "valid": True}
         
@@ -434,8 +604,12 @@ def preprocess_dataset(
         question = example.get("question") or example.get("sql_prompt", "")
         answer = example.get("answer") or example.get("sql", "")
         
+        # Qwen3 uses hybrid reasoning: 75% reasoning + 25% direct (as per Qwen3 training notebook)
+        include_reasoning = (reasoning_counter % 4 != 0)  # 75% with reasoning (3 out of 4)
+        reasoning_counter += 1
+        
         # Format and validate
-        text = format_example(example, dialect, use_chatml, validate_sql)
+        text = format_example(example, dialect, use_chatml, validate_sql, include_reasoning=include_reasoning)
         
         # If validation failed, skip this example
         if text is None:
