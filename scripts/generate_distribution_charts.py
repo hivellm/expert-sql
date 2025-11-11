@@ -18,7 +18,18 @@ import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend
 
 def extract_sql_from_chatml(text: str) -> str:
-    """Extract SQL query from ChatML text."""
+    """Extract SQL query from ChatML text (supports Qwen3 and legacy formats)."""
+    # Try Qwen3 format first (<|im_start|>assistant\n...<|im_end|>)
+    match = re.search(r'<\|im_start\|>assistant\n(.*?)<\|im_end\|>', text, re.DOTALL)
+    if match:
+        sql = match.group(1).strip()
+        # Remove reasoning blocks if present
+        sql = re.sub(r'<think>.*?</think>', '', sql, flags=re.DOTALL | re.IGNORECASE)
+        sql = re.sub(r'<think>.*?</think>', '', sql, flags=re.DOTALL | re.IGNORECASE)
+        sql = sql.strip()
+        if sql:
+            return sql
+    
     # Try standard ChatML format
     match = re.search(r'<\|assistant\|>\s*\n(.*?)\n<\|end\|>', text, re.DOTALL)
     if match:

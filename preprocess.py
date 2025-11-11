@@ -7,7 +7,7 @@ for optimal training with Qwen3-0.6B + DoRA.
 
 Features:
 - Schema canonicalization
-- ChatML formatting for Qwen3
+- Qwen3 format formatting (<|im_start|>/<|im_end|>)
 - Deduplication
 - Pre-tokenization (Windows optimization)
 - Arrow format export (10x faster loading)
@@ -28,11 +28,15 @@ import sys
 import io
 import os
 import logging
+import platform
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datasets import load_dataset, Dataset, DatasetDict
 from transformers import AutoTokenizer
 import gc
+
+# Windows compatibility: use single process to avoid file locking issues
+NUM_PROC = 1 if platform.system() == "Windows" else 4
 
 # Add experts root directory to path to import common utils
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../'))
@@ -230,7 +234,7 @@ def validate_postgres_sql(sql: str) -> Optional[str]:
         return sql
 
 
-def canonicalize_schema(schema: str, dialect: str = "postgres") -> str:
+def canonicalize_schema(schema: str, dialect: str = "sql") -> str:
     """
     Canonicalize SQL schema format for consistency.
     
@@ -293,7 +297,7 @@ def generate_brief_reasoning(question: str, sql: str) -> str:
 
 def format_example(
     example: Dict[str, Any],
-    dialect: str = "postgres",
+    dialect: str = "sql",
     use_chatml: bool = True,
     validate_sql: bool = True,
     include_reasoning: bool = False
@@ -305,10 +309,10 @@ def format_example(
     - b-mc2/sql-create-context: context, question, answer
     - gretelai/synthetic_text_to_sql: sql_context, sql_prompt, sql
     
-    Uses ChatML format for Qwen3:
-    <|system|>\nDialect: postgres\nSchema:\n{schema}<|end|>
-    <|user|>\n{question}<|end|>
-    <|assistant|>\n{answer}<|end|>
+    Uses Qwen3 format:
+    <|im_start|>system\nDialect: sql\nSchema:\n{schema}<|im_end|>
+    <|im_start|>user\n{question}<|im_end|>
+    <|im_start|>assistant\n{answer}<|im_end|>
     
     Args:
         validate_sql: If True, validate and fix SQL syntax (recommended)
@@ -322,12 +326,21 @@ def format_example(
     answer = example.get("answer") or example.get("sql", "")
     
     # Validate and fix SQL if requested
-    if validate_sql and dialect == "postgres":
-        fixed_answer = validate_postgres_sql(answer)
-        if fixed_answer is None:
-            # Invalid SQL, skip this example
-            return None
-        answer = fixed_answer
+    if validate_sql:
+        # For SQL generic, use basic validation (filter Cypher/SPARQL only)
+        # For specific dialects, use dialect-specific validation
+        if dialect == "postgres":
+            fixed_answer = validate_postgres_sql(answer)
+            if fixed_answer is None:
+                # Invalid SQL, skip this example
+                return None
+            answer = fixed_answer
+        else:
+            # Generic SQL validation: only filter Cypher/SPARQL
+            if is_cypher_or_sparql(answer):
+                return None
+            # Keep original SQL for generic dialect
+            answer = answer.strip()
     
     # Canonicalize schema
     schema = canonicalize_schema(schema, dialect)
@@ -347,7 +360,7 @@ def format_example(
         assistant_content = answer_clean
     
     if use_chatml:
-        # Qwen3 format: <|im_start|>role\ncontent<|im_end|>
+        # Always generate Qwen3 format: <|im_start|>role\ncontent<|im_end|>
         text = f"<|im_start|>system\nDialect: {dialect}\nSchema:\n{schema}<|im_end|>\n"
         text += f"<|im_start|>user\n{question}<|im_end|>\n"
         text += f"<|im_start|>assistant\n{assistant_content}<|im_end|>\n"
@@ -499,7 +512,7 @@ def rebalance_sql_types(examples: List[Dict[str, Any]], target_select_ratio: flo
 
 def preprocess_dataset(
     dataset: Dataset,
-    dialect: str = "postgres",
+    dialect: str = "sql",
     use_chatml: bool = True,
     deduplicate: bool = True,
     min_length: int = 10,
@@ -511,7 +524,7 @@ def preprocess_dataset(
     """
     Preprocess entire dataset:
     1. Format examples with schema normalization
-    2. Validate and fix SQL syntax (PostgreSQL)
+    2. Validate and fix SQL syntax (dialect-specific if postgres, generic otherwise)
     3. Add 'text' field for SFTTrainer
     4. Deduplicate if requested
     5. Filter by length and validity
@@ -519,7 +532,10 @@ def preprocess_dataset(
     """
     print(f"[1/6] Formatting and validating {len(dataset)} examples...")
     if validate_sql and SQL_VALIDATION_AVAILABLE:
-        print("      SQL validation: ENABLED (fixing MySQL->PostgreSQL)")
+        if dialect == "postgres":
+            print("      SQL validation: ENABLED (fixing MySQL->PostgreSQL)")
+        else:
+            print(f"      SQL validation: ENABLED (generic SQL, dialect: {dialect})")
     else:
         print("      SQL validation: DISABLED")
     
@@ -529,7 +545,7 @@ def preprocess_dataset(
     def process_example(example):
         nonlocal invalid_count, reasoning_counter
         
-        # Check if already in ChatML format (has "text" field)
+        # Check if already in Qwen3/ChatML format (has "text" field)
         if "text" in example and example["text"]:
             text = example["text"]
             # Extract question from Qwen3 or ChatML format for deduplication
@@ -569,15 +585,34 @@ def preprocess_dataset(
                         invalid_count += 1
                         return {"text": "", "question": question, "valid": False}
                     
-                    fixed_sql = validate_postgres_sql(sql)
-                    if fixed_sql is None:
-                        invalid_count += 1
-                        return {"text": "", "question": question, "valid": False}
+                    # Validate SQL based on dialect
+                    if dialect == "postgres":
+                        fixed_sql = validate_postgres_sql(sql)
+                        if fixed_sql is None:
+                            invalid_count += 1
+                            return {"text": "", "question": question, "valid": False}
+                    else:
+                        # Generic SQL: just sanitize and keep original
+                        fixed_sql = sql.strip()
+                        if not fixed_sql:
+                            invalid_count += 1
+                            return {"text": "", "question": question, "valid": False}
                     
-                    # Rebuild ChatML with sanitized SQL
+                    # Rebuild Qwen3 format with sanitized SQL
+                    # Extract question (try Qwen3 first, then ChatML)
                     question_match = re.search(r'<\|im_start\|>user\n(.*?)<\|im_end\|>', text, re.DOTALL)
+                    if not question_match:
+                        question_match = re.search(r'<\|user\|>\s*\n(.*?)\n<\|end\|>', text, re.DOTALL)
+                    if not question_match:
+                        question_match = re.search(r'<\|user\|>(.*?)<\|end\|>', text, re.DOTALL)
                     question = question_match.group(1).strip() if question_match else ""
+                    
+                    # Extract system content (try Qwen3 first, then ChatML)
                     system_match = re.search(r'<\|im_start\|>system\n(.*?)<\|im_end\|>', text, re.DOTALL)
+                    if not system_match:
+                        system_match = re.search(r'<\|system\|>\s*\n(.*?)\n<\|end\|>', text, re.DOTALL)
+                    if not system_match:
+                        system_match = re.search(r'<\|system\|>(.*?)<\|end\|>', text, re.DOTALL)
                     system_content = system_match.group(1).strip() if system_match else f"Dialect: {dialect}"
                     
                     # Rebuild with clean SQL
@@ -619,12 +654,12 @@ def preprocess_dataset(
         # Return text AND question (question needed for deduplication)
         return {"text": text, "question": question, "valid": True}
     
-    dataset = dataset.map(process_example, num_proc=4)
+    dataset = dataset.map(process_example, num_proc=NUM_PROC)
     
     # Filter out invalid examples FIRST
     if validate_sql:
         print(f"[2/6] Removing invalid SQL examples...")
-        dataset = dataset.filter(lambda x: x.get("valid", True), num_proc=4)
+        dataset = dataset.filter(lambda x: x.get("valid", True), num_proc=NUM_PROC)
         if invalid_count > 0:
             print(f"      Removed {invalid_count} invalid SQL examples")
     else:
@@ -633,7 +668,7 @@ def preprocess_dataset(
     print(f"[3/6] Filtering by length ({min_length}-{max_length} chars)...")
     dataset = dataset.filter(
         lambda x: min_length <= len(x.get("text", "")) <= max_length,
-        num_proc=4
+        num_proc=NUM_PROC
     )
     
     if deduplicate:
@@ -702,9 +737,9 @@ def preprocess_dataset(
         columns_to_remove.append("valid")
     
     if columns_to_remove:
-        dataset = dataset.map(lambda x: {"text": x["text"]}, num_proc=4, remove_columns=columns_to_remove)
+        dataset = dataset.map(lambda x: {"text": x["text"]}, num_proc=NUM_PROC, remove_columns=columns_to_remove)
     else:
-        dataset = dataset.map(lambda x: {"text": x["text"]}, num_proc=4)
+        dataset = dataset.map(lambda x: {"text": x["text"]}, num_proc=NUM_PROC)
     
     print(f"Final dataset size: {len(dataset)} examples")
     if validate_sql and invalid_count > 0:
@@ -812,7 +847,7 @@ def main():
         "--use-all-sources",
         action="store_true",
         default=True,
-        help="Use all project datasets: gretelai/synthetic_text_to_sql, Clinton/Text-to-sql-v1, synthetic_fixes.jsonl, and the-stack (default: enabled)"
+        help="Use all project datasets: gretelai/synthetic_text_to_sql, Clinton/Text-to-sql-v1, synthetic_fixes.jsonl, and the-stack (default: enabled). Use --no-use-all-sources to disable."
     )
     parser.add_argument(
         "--output",
@@ -823,16 +858,16 @@ def main():
     parser.add_argument(
         "--dialect",
         type=str,
-        default="postgres",
-        choices=["postgres", "mysql", "sqlite", "mssql"],
-        help="SQL dialect (default: postgres)"
+        default="sql",
+        choices=["sql", "postgres", "mysql", "sqlite", "mssql"],
+        help="SQL dialect (default: sql for generic SQL)"
     )
     parser.add_argument(
         "--format",
         type=str,
         default="chatml",
         choices=["chatml", "simple"],
-        help="Output format (default: chatml for Qwen3)"
+        help="Output format (default: chatml generates Qwen3 format with <|im_start|>/<|im_end|>)"
     )
     parser.add_argument(
         "--no-deduplicate",
@@ -894,7 +929,12 @@ def main():
     print(f"Dialect: {args.dialect}")
     print(f"Format: {args.format}")
     print(f"Output: {args.output}")
-    print(f"SQL Validation: {'DISABLED' if args.no_validate_sql else 'ENABLED (MySQL->PostgreSQL fix)'}")
+    if args.no_validate_sql:
+        print(f"SQL Validation: DISABLED")
+    elif args.dialect == "postgres":
+        print(f"SQL Validation: ENABLED (MySQL->PostgreSQL fix)")
+    else:
+        print(f"SQL Validation: ENABLED (generic SQL, dialect: {args.dialect})")
     print(f"Rebalancing: {'DISABLED' if args.no_rebalance else f'ENABLED (target SELECT: {args.select_ratio*100:.1f}%)'}")
     if args.tokenize:
         print(f"Tokenize: YES (model: {args.model})")
@@ -942,7 +982,6 @@ def main():
         if not synthetic_fixes_path.is_absolute():
             synthetic_fixes_path = Path.cwd() / synthetic_fixes_path
         if synthetic_fixes_path.exists() and synthetic_fixes_path.is_file():
-            import json
             examples = []
             with open(synthetic_fixes_path, 'r', encoding='utf-8') as f:
                 for line in f:
@@ -963,7 +1002,6 @@ def main():
         if not the_stack_path.is_absolute():
             the_stack_path = Path.cwd() / the_stack_path
         if the_stack_path.exists() and the_stack_path.is_file():
-            import json
             import random
             examples = []
             with open(the_stack_path, 'r', encoding='utf-8') as f:
@@ -996,7 +1034,6 @@ def main():
             dataset_path = Path.cwd() / dataset_path
         if dataset_path.exists() and dataset_path.is_file():
             print(f"Loading local JSONL file: {args.dataset}...")
-            import json
             examples = []
             with open(args.dataset, 'r', encoding='utf-8') as f:
                 for line in f:
@@ -1021,7 +1058,6 @@ def main():
                 the_stack_path = Path.cwd() / the_stack_path
             if the_stack_path.exists() and the_stack_path.is_file():
                 print(f"\nLoading The Stack SQL: {args.the_stack}...")
-                import json
                 import random
                 examples = []
                 with open(the_stack_path, 'r', encoding='utf-8') as f:

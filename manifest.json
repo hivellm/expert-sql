@@ -28,7 +28,6 @@
           "alpha": 24,
           "scaling": "dora",
           "dropout": 0.1,
-          "path": "qwen3-06b/checkpoint-500",
           "size_bytes": 0,
           "sha256": "",
           "_comment": "Checkpoint-500 (epoch 0.5): Melhor equilíbrio entre completude e concisão. 100% das saídas válidas em 15 testes comparativos e melhores respostas em JOIN/HAVING versus v0.2.1."
@@ -175,6 +174,7 @@
       "path": "datasets/train.jsonl",
       "format": "jsonl",
       "streaming": false,
+      "_comment": "Dataset regenerado com Qwen3 Hybrid Reasoning (75% reasoning + 25% direct outputs)",
       "_comment": "Multi-source dataset: 147,140 validated examples (gretelai/synthetic_text_to_sql: 99,935, Clinton/Text-to-sql-v1: 47,145, synthetic_fixes: 60). Additional data sources available: bigcode/the-stack (https://huggingface.co/datasets/bigcode/the-stack/tree/main/data). Multi-dialect normalization (MySQL/SQLite->SQL), sqlglot validation, deduplicated (2,855 removed), English-only. Optimized to text-only format (77% smaller). Checkpoint-1250 achieved 9.6/10 quality score."
     },
     "config": {
