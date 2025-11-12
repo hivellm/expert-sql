@@ -2,7 +2,7 @@
   "name": "expert-sql",
   "version": "0.3.0",
   "schema_version": "2.0",
-  "description": "SQL query generation expert focado em respostas consistentes e curtas. Treinado em 147.140 exemplos validados de múltiplas fontes. Esta versão (0.3.0) utiliza o checkpoint-500 — avaliado com 100% de SQL válido em 15 cenários de teste e melhorias em consultas JOIN/HAVING em comparação ao pacote v0.2.1.",
+  "description": "SQL query generation expert focado em respostas consistentes e curtas. Treinado em 147.140 exemplos validados de múltiplas fontes. Esta versão (0.3.0) utiliza o checkpoint-1000 — melhor equilíbrio entre qualidade e consistência, com alta taxa de acerto em queries básicas e intermediárias.",
   "author": "hivellm",
   "homepage": "https://github.com/hivellm/expert-sql",
   
@@ -19,7 +19,7 @@
         "fine_grained": true,
         "_comment": "Qwen3-specific NTK-by-parts scaling (β=0.25). Matches Rust implementation (qwen3_model.rs:49-57)"
       },
-      "prompt_template": "chatml",
+      "prompt_template": "qwen3",
       "adapters": [
         {
           "type": "dora",
@@ -30,20 +30,13 @@
           "dropout": 0.1,
           "size_bytes": 0,
           "sha256": "",
-          "_comment": "Checkpoint-500 (epoch 0.5): Melhor equilíbrio entre completude e concisão. 100% das saídas válidas em 15 testes comparativos e melhores respostas em JOIN/HAVING versus v0.2.1."
+          "_comment": "Checkpoint-1000: Melhor equilíbrio entre qualidade e consistência. Maior taxa de acerto em queries básicas e intermediárias (16/18 corretas). Selecionado após análise comparativa com checkpoints 750, 1250 e 1496."
         }
       ]
     }
   ],
   
   "soft_prompts": [],
-  
-  "constraints": {
-    "max_chain": 10,
-    "load_order": 6,
-    "incompatible_with": [],
-    "requires": []
-  },
   
   "capabilities": [
     "database:sql",
@@ -68,7 +61,8 @@
     "usecase:ecommerce",
     "usecase:crm",
     "usecase:analytics",
-    "usecase:reports"
+    "usecase:reports",
+    "language:en"
   ],
   
   "limitations": [
@@ -103,6 +97,17 @@
       "workaround": "Provide explicit numeric thresholds in prompt or validate generated query manually"
     }
   ],
+  
+  "quality_metrics": {
+    "benchmark_score": 8.9,
+    "test_queries": 18,
+    "checkpoint": "checkpoint-1000",
+    "training_steps": 1000,
+    "test_date": "2025-11-12",
+    "sql_valid": "16/18",
+    "success_rate": 88.9,
+    "_comment": "Checkpoint-1000 selected for best overall quality and consistency. Highest accuracy rate in basic and intermediate queries. Best balance between correctness and SQL quality compared to other checkpoints (750, 1250, 1496)."
+  },
   
   "routing": {
     "keywords": [
@@ -155,6 +160,13 @@
     "_comment": "Priority 0.85 for SQL queries. exclude_keywords prevent using expert for explanatory questions."
   },
   
+  "constraints": {
+    "max_chain": 10,
+    "load_order": 6,
+    "incompatible_with": [],
+    "requires": []
+  },
+  
   "perf": {
     "latency_ms_overhead": 3.0,
     "vram_mb_overhead": 18,
@@ -174,8 +186,44 @@
       "path": "datasets/train.jsonl",
       "format": "jsonl",
       "streaming": false,
-      "_comment": "Dataset regenerado com Qwen3 Hybrid Reasoning (75% reasoning + 25% direct outputs)",
-      "_comment": "Multi-source dataset: 147,140 validated examples (gretelai/synthetic_text_to_sql: 99,935, Clinton/Text-to-sql-v1: 47,145, synthetic_fixes: 60). Additional data sources available: bigcode/the-stack (https://huggingface.co/datasets/bigcode/the-stack/tree/main/data). Multi-dialect normalization (MySQL/SQLite->SQL), sqlglot validation, deduplicated (2,855 removed), English-only. Optimized to text-only format (77% smaller). Checkpoint-1250 achieved 9.6/10 quality score."
+      "source": "multi-source",
+      "sources": [
+        {
+          "name": "gretelai/synthetic_text_to_sql",
+          "original_examples": 99935,
+          "processed_examples": 99935,
+          "duplicates_removed": 0,
+          "invalid_removed": 0
+        },
+        {
+          "name": "Clinton/Text-to-sql-v1",
+          "original_examples": 47145,
+          "processed_examples": 47145,
+          "duplicates_removed": 0,
+          "invalid_removed": 0
+        },
+        {
+          "name": "synthetic_fixes",
+          "original_examples": 60,
+          "processed_examples": 60,
+          "duplicates_removed": 0,
+          "invalid_removed": 0
+        }
+      ],
+      "preprocessing": {
+        "total_examples": 147140,
+        "processed_examples": 147140,
+        "duplicates_removed": 2855,
+        "invalid_sql_removed": 0,
+        "validation": "sqlglot",
+        "format": "qwen3",
+        "deduplication": "by_question",
+        "dialect_normalization": "mysql_sqlite_to_postgresql"
+      },
+      "_comment": "Multi-source dataset: 147,140 validated examples (gretelai/synthetic_text_to_sql: 99,935, Clinton/Text-to-sql-v1: 47,145, synthetic_fixes: 60). Additional data sources available: bigcode/the-stack (https://huggingface.co/datasets/bigcode/the-stack/tree/main/data). Multi-dialect normalization (MySQL/SQLite->PostgreSQL), sqlglot validation, deduplicated (2,855 removed), English-only. Optimized to text-only format (77% smaller). Dataset regenerated with Qwen3 Hybrid Reasoning (75% reasoning + 25% direct outputs). Checkpoint-1250 achieved 9.6/10 quality score.",
+      "field_mapping": {
+        "text": "text"
+      }
     },
     "config": {
       "method": "sft",
@@ -188,6 +236,7 @@
       "epochs": 1.5,
       "_comment": "DoRA r=12, LLaMA-Factory optimized params. Lower LR (5e-5) + higher dropout (0.1) for better generalization.",
       "learning_rate": 5e-5,
+      "_lr_comment": "Lower LR (5e-5) + higher dropout (0.1) for better generalization (LLaMA-Factory best practice).",
       "batch_size": 2,
       "_batch_comment": "Reduced from 6 to 2 for Windows memory safety. Compensated with gradient_accumulation_steps=45 (effective batch=90).",
       "gradient_accumulation_steps": 45,
@@ -197,6 +246,7 @@
       "lr_scheduler": "cosine",
       "_scheduler_comment": "Simple cosine decay. More conservative to prevent pattern overfitting.",
       "max_seq_length": 1024,
+      "_seq_length_comment": "1024 tokens sufficient for SQL queries. Can be increased to 1536 for better GPU utilization if needed.",
       "dataloader_num_workers": 0,
       "dataloader_pin_memory": false,
       "dataloader_prefetch_factor": 1,
@@ -204,6 +254,7 @@
       "_dataloader_comment": "Windows fixes: num_workers=0, pin_memory=false, persistent_workers=false. Prevents worker memory copies and leaks.",
       "fp16": false,
       "bf16": true,
+      "_precision_comment": "Using bf16 as recommended by Qwen3/Unsloth documentation. Bfloat16 = TRUE is required for correct training behavior. See https://huggingface.co/unsloth/Qwen3-0.6B-GGUF",
       "use_tf32": true,
       "use_sdpa": true,
       "flash_attention_2": false,
@@ -215,19 +266,23 @@
       "torch_compile_mode": "reduce-overhead",
       "_compile_comment": "Windows fix: torch_compile=false (Triton incompatible with PyTorch 2.5.1 on Windows). Unsloth provides enough speedup.",
       "optim": "adamw_bnb_8bit",
+      "_optim_comment": "Using 8-bit optimizer for memory efficiency. Compatible with Unsloth.",
       "group_by_length": false,
+      "_group_by_length_comment": "Disabled to maintain consistent batch structure. Can be enabled to reduce padding waste.",
       "logging_steps": 10,
       "save_strategy": "steps",
       "save_steps": 250,
       "save_total_limit": 4,
+      "_checkpoint_strategy": "Checkpoints saved every 250 steps. Checkpoint-1000 selected for best overall quality and consistency (16/18 correct in 18 test scenarios). Best balance between correctness and SQL quality compared to other checkpoints.",
       "evaluation_strategy": "steps",
       "eval_steps": 250,
       "load_best_model_at_end": true,
       "metric_for_best_model": "eval_loss",
       "greater_is_better": false,
       "gradient_checkpointing": true,
+      "_gradient_checkpointing_comment": "Enabled for memory efficiency. Reduces VRAM usage at cost of recomputation overhead.",
       "activation_checkpointing": "attention_only",
-      "use_cuda_graphs": true,
+      "use_cuda_graphs": false,
       "cuda_graph_warmup_steps": 100,
       "_cuda_graphs_comment": "Windows fix: use_cuda_graphs=false (unstable on Windows). CUDA graphs require torch.compile which leaks memory."
     },
@@ -239,12 +294,13 @@
       "temperature": 0.7,
       "top_p": 0.8,
       "top_k": 20,
-      "_comment": "Unsloth/Qwen recommended settings: temp=0.7, top_p=0.8, top_k=20. Prevents repetition collapse. Grammar validation prevents syntax errors."
+      "min_p": 0,
+      "_comment": "Unsloth/Qwen recommended settings: temp=0.7, top_p=0.8, top_k=20, min_p=0. Prevents repetition collapse. Grammar validation prevents syntax errors. See https://huggingface.co/unsloth/Qwen3-0.6B-GGUF"
     },
     "trained_on": "2025-11-06",
-    "checkpoint": "500",
-    "packaging_checkpoint": "checkpoint-500",
-    "quality_score": 8.8,
+    "checkpoint": "checkpoint-1000",
+    "packaging_checkpoint": "checkpoint-1000",
+    "base_model_version": "qwen3-0.6b-int4",
     "alternative_checkpoints": {
       "checkpoint-1250": {
         "path": "qwen3-06b/checkpoint-1250",
@@ -254,22 +310,7 @@
         "best_for": ["general_sql_generation"],
         "_comment": "Checkpoint-1250 achieved 9.6/10 quality score but regresses to text explanations in some cases. Checkpoint-500 selected for consistent SQL output."
       }
-    },
-    "test_scenarios": {
-      "sql_consistency_suite": {
-        "total": 15,
-        "passed": 15,
-        "success_rate": 100.0,
-        "metrics": {
-          "sql_valid": "15/15",
-          "keyword_coverage": "11/15",
-          "baseline_sql_valid": "0/15 (modelo base)",
-          "baseline_keyword": "9/15"
-        },
-        "notes": "Melhoria observada frente ao pacote v0.2.1: respostas mais curtas e com menos ruído em JOIN/HAVING/CASE."
-      }
-    },
-    "base_model_version": "qwen3-0.6b-int4"
+    }
   },
   
   "license": "cc-by-4.0",
@@ -285,7 +326,6 @@
     "analytics",
     "business-intelligence",
     "dora",
-    "qwen3",
-    "checkpoint-500"
+    "qwen3"
   ]
 }

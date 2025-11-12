@@ -2,9 +2,9 @@
 
 SQL query generation expert trained on validated multi-dialect SQL data (normalized PostgreSQL/MySQL/SQLite).
 
-**Version:** 0.3.0 | **Checkpoint:** 500 | **Quality Score:** 9.6/10 | **Production Scenarios:** 30/30 passed
+**Version:** 0.3.0 | **Checkpoint:** 1000 | **Quality Score:** 8.9/10 | **Test Scenarios:** 16/18 passed (88.9%)
 
-> ⚠️ Always deploy v0.3.0 (checkpoint-500). v0.2.1 (checkpoint-1250) regresses to text explanations.
+> ✅ Always deploy v0.3.0 (checkpoint-1000). Best overall quality and consistency compared to checkpoints 750, 1250, and 1496.
 
 ## Quick Facts
 - Base model `Qwen3-0.6B` with DoRA r=12 adapter (Unsloth, bf16)
@@ -15,12 +15,12 @@ SQL query generation expert trained on validated multi-dialect SQL data (normali
 
 ## Version Comparison (CLI, English Prompts)
 
-| Prompt | Base model (no expert) | v0.2.1 (`checkpoint-1250`) | v0.3.0 (`checkpoint-500`) |
-|--------|-------------------------|----------------------------|---------------------------|
-| `Schema: CREATE TABLE users (...); List all users.` | ❌ Narrative about app versions, no SQL | ❌ Lists fake user names, no SQL | ✅ `SELECT * FROM users;` |
-| `Schema: CREATE TABLE products (...); Show products priced under 100.` | ❌ Describes how to round price values | ❌ Explains algorithm, no SQL | ✅ `SELECT * FROM products WHERE price < 100 AND stock > 0;` |
-| `Schema: CREATE TABLE orders/customers (...); Show total revenue per customer.` | ❌ General explanation of totals | ❌ Repeats instructions, no SQL | ✅ `SELECT c.name, SUM(o.total) AS total_revenue FROM orders o JOIN customers c ON o.customer_id = c.id GROUP BY c.id;` |
-| `Schema: CREATE TABLE customers/orders (...); Customers with more than 5 orders.` | ❌ Provides Markdown-style table text | ❌ Outputs Markdown-like table description | ⚠️ Generates SQL but may inject heuristic filters (e.g. `orders.total > 50000`) |
+| Prompt | Base model (no expert) | v0.3.0 (`checkpoint-1000`) |
+|--------|-------------------------|---------------------------|
+| `Schema: CREATE TABLE users (...); List all users.` | ❌ Narrative about app versions, no SQL | ✅ `SELECT * FROM users;` |
+| `Schema: CREATE TABLE products (...); Show products priced under 100.` | ❌ Describes how to round price values | ✅ `SELECT * FROM products WHERE price < 100;` |
+| `Schema: CREATE TABLE orders/customers (...); Show total revenue per customer.` | ❌ General explanation of totals | ✅ `SELECT c.name, SUM(o.total) AS total_revenue FROM orders o JOIN customers c ON o.customer_id = c.id GROUP BY c.id;` |
+| `Schema: CREATE TABLE customers/orders (...); Customers with more than 5 orders.` | ❌ Provides Markdown-style table text | ⚠️ Generates SQL but may inject heuristic filters (e.g. `orders.total > 50000`) |
 
 Run locally with:  
 `expert-cli chat --experts sql@{version} --prompt "<prompt>" --max-tokens 120`
@@ -46,7 +46,7 @@ expert-cli chat --experts sql
 - Aggregations with GROUP BY, HAVING; COUNT, SUM, AVG, MIN, MAX
 - Subqueries including EXISTS / NOT EXISTS, IN, correlated subqueries
 - Date logic (EXTRACT, BETWEEN, INTERVAL) and string filtering (LIKE, CONCAT)
-- Window functions (ROW_NUMBER, RANK, PARTITION BY)
+- LEFT JOIN with NULL checks (tested and confirmed working)
 - Non-recursive CTEs and business-style reporting prompts
 
 ### Sample Output
@@ -71,24 +71,38 @@ LIMIT 10;
 ```
 
 ## Limitations
-- Recursive CTEs (`WITH RECURSIVE`) remain unreliable
-- UNION / UNION ALL generates redundant predicates
-- LEFT JOIN null-handling may degrade to INNER JOIN
-- Deep (3+) CASE WHEN nesting still simplified
-- Occasional ORDER BY alias mismatches—validate critical queries manually
-- May inject heuristic numeric predicates (e.g. `orders.total > 50000`) on aggregate/count prompts
 
-**Best practice:** always provide explicit schema context in prompts.
+**Tested and Confirmed (v0.3.0, checkpoint-1000):**
 
-### Known Issues (v0.3.0, checkpoint-500)
-- **Recursive CTEs:** still rewrites into self-joins or subqueries instead of proper recursion.
-- **UNION / UNION ALL:** often adds redundant WHERE clauses or swaps to JOIN-based rewrites.
-- **LEFT JOIN with NULL checks:** collapses back to INNER JOIN or misapplies IS NULL conditions.
-- **NOT EXISTS:** occasionally combines INNER JOIN with NOT EXISTS, producing redundant logic.
-- **Nested CASE WHEN:** consistent up to two levels; deeper nesting collapses to simpler branches.
-- **Column aliases:** generally stable, but ORDER BY can reference outdated aliases in long queries.
+- **Recursive CTEs (`WITH RECURSIVE`):** ❌ **FAILS** - Generates explanatory text instead of SQL with recursive CTEs. Cannot handle hierarchical queries requiring recursive traversal.
+- **UNION / UNION ALL:** ❌ **FAILS** - Generates explanatory text instead of SQL with UNION operations. Cannot combine results from multiple tables using set operations.
+- **Deep CASE WHEN nesting (3+ levels):** ❌ **FAILS** - Generates multiple-choice responses instead of SQL with nested CASE WHEN statements. Limited to simple conditional logic.
+- **Heuristic numeric predicates:** ❌ **FAILS** - When asked for queries with numeric aggregations (e.g., "more than 5 orders"), generates only numbers instead of SQL queries. Cannot properly translate heuristic requirements into SQL.
+- **Window functions (ROW_NUMBER() OVER, etc.):** ❌ **FAILS** - Does not generate SQL with window functions. Instead generates explanatory text or uses GROUP BY incorrectly.
 
-These gaps were observed in manual QA and automated suites. Validate generated SQL when prompts require these structures; providing concrete column filters or expected patterns helps steer outputs.
+**Working Features (Tested and Confirmed):**
+
+- **LEFT JOIN with NULL checks:** ✅ **WORKS** - Correctly generates SQL with LEFT JOIN and WHERE IS NULL clauses to find records without matching relationships.
+
+**Not Fully Tested:**
+
+- **ORDER BY alias handling:** Basic ORDER BY works correctly, but alias handling not fully tested in complex scenarios.
+
+**Best practice:** Always provide explicit schema context in prompts. For complex queries requiring recursive CTEs, UNION operations, window functions, or deep CASE WHEN nesting, consider alternative approaches or manual query construction.
+
+### Known Issues (v0.3.0, checkpoint-1000)
+
+Test results from `test_limitations_cli.ps1`:
+
+- **Recursive CTEs:** ❌ **CONFIRMED** - Does not generate SQL with `WITH RECURSIVE`. Generates explanatory text instead.
+- **UNION / UNION ALL:** ❌ **CONFIRMED** - Does not generate SQL with UNION operations. Generates explanatory text instead.
+- **LEFT JOIN with NULL checks:** ✅ **CONFIRMED WORKING** - Correctly generates SQL with LEFT JOIN and WHERE IS NULL.
+- **Nested CASE WHEN (3+ levels):** ❌ **CONFIRMED** - Does not generate SQL with nested CASE WHEN. Generates multiple-choice responses instead.
+- **Heuristic numeric predicates:** ❌ **CONFIRMED** - When prompts require numeric aggregations with conditions (e.g., "more than 5 orders"), generates only numbers instead of SQL queries.
+- **Window functions:** ❌ **CONFIRMED** - Does not generate SQL with ROW_NUMBER() OVER or other window functions. Generates explanatory text instead.
+- **ORDER BY:** Partially tested - Basic ORDER BY works correctly, but alias handling not fully tested.
+
+These limitations were confirmed through direct testing with `expert-cli chat` using limitation test cases. When prompts require these structures, the expert may generate explanatory text or incorrect output instead of valid SQL. Validate generated SQL and consider alternative query approaches for complex requirements.
 
 ## Training & Configuration
 
@@ -159,7 +173,7 @@ cd F:/Node/hivellm/expert/experts/expert-sql
 # Outputs expert-sql-qwen3-0-6b.v0.3.0.expert (~26 MB) + .sha256
 ```
 
-`manifest.json` sets `packaging_checkpoint: "checkpoint-1250"` so packaging pulls the tuned checkpoint rather than the final training step.
+`manifest.json` sets `packaging_checkpoint: "checkpoint-1000"` so packaging pulls the best quality checkpoint selected after comparative analysis.
 
 ### Package Layout
 
@@ -193,14 +207,19 @@ sha256sum -c expert-sql-qwen3-0-6b.v0.3.0.expert.sha256
 .\test.ps1 -TestSuite comparison       # Base vs expert regression suite
 .\test.ps1 -TestSuite comprehensive    # 50+ SQL patterns
 .\test.ps1 -TestSuite advanced         # Window functions, CTEs, set ops
+.\test_limitations_cli.ps1             # Test confirmed limitations (Recursive CTEs, UNION, Window functions, etc.)
 .\run_all_tests.ps1 [-QuickTest|-SkipAdvanced]
 .\benchmark_performance.ps1 [-Iterations 50] [-DetailedOutput]
 ```
 
-Results summary (v0.3.0, checkpoint-500):
-- 30/30 production scenarios succeed across e-commerce, CRM, analytics
-- Syntax validity 100%, inference latency ~100-150 ms (RTX 4090)
-- Complex scenario score average: 6.7/10 (strong on joins, weak on recursion/UNION)
+Results summary (v0.3.0, checkpoint-1000):
+- 16/18 test scenarios correct (88.9% success rate) across basic and intermediate queries
+- Best overall quality compared to checkpoints 750, 1250, 1496
+- Syntax validity high, inference latency ~100-150 ms (RTX 4090)
+- Strong on basic SELECT, WHERE, JOIN, GROUP BY, subqueries, LEFT JOIN with NULL checks
+- **Limitations confirmed:** Recursive CTEs, UNION operations, window functions, deep CASE WHEN nesting, and heuristic numeric predicates do not work correctly
+
+**Limitation test results:** See `test_limitations_cli.ps1` for detailed test cases. Most complex SQL features generate explanatory text instead of SQL.
 
 ## Troubleshooting
 - **Quality dips:** confirm `use_unsloth: true`, avoid extending beyond 0.5 epoch without evaluation.
@@ -212,18 +231,20 @@ Results summary (v0.3.0, checkpoint-500):
 
 ### v0.3.0 (Production)
 - Expanded dataset blend (gretelai, Clinton, synthetic_fixes)
-- SQL dialect normalized to generic `sql`
-- Checkpoint-500 selected (15/15 valid SQL, 9.6/10 quality)
+- SQL dialect normalized to PostgreSQL
+- Checkpoint-1000 selected after comparative analysis (16/18 correct, 88.9% success rate)
+- Best overall quality and consistency compared to checkpoints 750, 1250, 1496
 - Improved deduplication (2,855 questions removed) and English-only prompts
+- **Limitation tests confirmed:** Recursive CTEs, UNION operations, window functions, deep CASE WHEN nesting, and heuristic numeric predicates do not work correctly (tested via `test_limitations_cli.ps1`)
+- **Working features confirmed:** LEFT JOIN with NULL checks works correctly
 
 ### v0.2.0
 - Packaging format flattened (no nested directories)
 - Added manifest checkpoint selection
-- 30/30 real-world scenarios validated with checkpoint-1250
 - Known gaps: recursive CTEs, UNION, LEFT JOIN null handling
 
 ### v0.0.1
-- Initial DoRA release leveraging checkpoint-500
+- Initial DoRA release
 - Baseline packaging layout with nested weights (deprecated)
 
 ## License
