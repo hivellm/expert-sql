@@ -1,8 +1,17 @@
 # Expert SQL
 
-SQL query generation expert trained on validated multi-dialect SQL data (normalized PostgreSQL/MySQL/SQLite).
+[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/hivellm/expert-sql/releases/tag/v0.3.0)
+[![License](https://img.shields.io/badge/license-CC--BY--4.0-green.svg)](LICENSE)
+[![Status](https://img.shields.io/badge/status-production-brightgreen.svg)](README.md#version-history)
+[![Quality Score](https://img.shields.io/badge/quality-8.9%2F10-brightgreen.svg)](README.md#testing--benchmarking)
+[![Test Scenarios](https://img.shields.io/badge/tests-16%2F18%20passed-success.svg)](README.md#testing--benchmarking)
 
-**Version:** 0.3.0 | **Checkpoint:** 1000 | **Quality Score:** 8.9/10 | **Test Scenarios:** 16/18 passed (88.9%)
+[![Base Model](https://img.shields.io/badge/base%20model-Qwen3--0.6B-orange.svg)](README.md#quick-facts)
+[![Checkpoint](https://img.shields.io/badge/checkpoint-1000-blue.svg)](README.md#version-history)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20CUDA-0078d4.svg)](README.md#quick-facts)
+[![VRAM](https://img.shields.io/badge/VRAM-~0.56%20GB-yellow.svg)](README.md#quick-facts)
+
+SQL query generation expert trained on validated multi-dialect SQL data (normalized PostgreSQL/MySQL/SQLite).
 
 > ✅ Always deploy v0.3.0 (checkpoint-1000). Best overall quality and consistency compared to checkpoints 750, 1250, and 1496.
 
@@ -13,30 +22,15 @@ SQL query generation expert trained on validated multi-dialect SQL data (normali
 - Optimized for Windows + CUDA (RTX 4090 baseline), low VRAM footprint (~0.56 GB)
 - Works best for e-commerce, CRM, analytics, operational reporting
 
-## Version Comparison (CLI, English Prompts)
-
-| Prompt | Base model (no expert) | v0.3.0 (`checkpoint-1000`) |
-|--------|-------------------------|---------------------------|
-| `Schema: CREATE TABLE users (...); List all users.` | ❌ Narrative about app versions, no SQL | ✅ `SELECT * FROM users;` |
-| `Schema: CREATE TABLE products (...); Show products priced under 100.` | ❌ Describes how to round price values | ✅ `SELECT * FROM products WHERE price < 100;` |
-| `Schema: CREATE TABLE orders/customers (...); Show total revenue per customer.` | ❌ General explanation of totals | ✅ `SELECT c.name, SUM(o.total) AS total_revenue FROM orders o JOIN customers c ON o.customer_id = c.id GROUP BY c.id;` |
-| `Schema: CREATE TABLE customers/orders (...); Customers with more than 5 orders.` | ❌ Provides Markdown-style table text | ⚠️ Generates SQL but may inject heuristic filters (e.g. `orders.total > 50000`) |
-
-Run locally with:  
-`expert-cli chat --experts sql@{version} --prompt "<prompt>" --max-tokens 120`
-
 ## Quick Start
 
 ```bash
-# 1. Download package
+# Download and install
 wget https://github.com/hivellm/expert-sql/releases/download/v0.3.0/expert-sql-qwen3-0-6b.v0.3.0.expert
-
-# 2. Install
 expert-cli install expert-sql-qwen3-0-6b.v0.3.0.expert
 
-# 3. Chat
+# Use
 expert-cli chat --experts sql
-> List all users who registered in the last month
 ```
 
 ## Capabilities
@@ -46,7 +40,7 @@ expert-cli chat --experts sql
 - Aggregations with GROUP BY, HAVING; COUNT, SUM, AVG, MIN, MAX
 - Subqueries including EXISTS / NOT EXISTS, IN, correlated subqueries
 - Date logic (EXTRACT, BETWEEN, INTERVAL) and string filtering (LIKE, CONCAT)
-- LEFT JOIN with NULL checks (tested and confirmed working)
+- LEFT JOIN with NULL checks
 - Non-recursive CTEs and business-style reporting prompts
 
 ### Sample Output
@@ -72,37 +66,19 @@ LIMIT 10;
 
 ## Limitations
 
-**Tested and Confirmed (v0.3.0, checkpoint-1000):**
+**Confirmed failures (tested via `test_limitations_cli.ps1`):**
 
-- **Recursive CTEs (`WITH RECURSIVE`):** ❌ **FAILS** - Generates explanatory text instead of SQL with recursive CTEs. Cannot handle hierarchical queries requiring recursive traversal.
-- **UNION / UNION ALL:** ❌ **FAILS** - Generates explanatory text instead of SQL with UNION operations. Cannot combine results from multiple tables using set operations.
-- **Deep CASE WHEN nesting (3+ levels):** ❌ **FAILS** - Generates multiple-choice responses instead of SQL with nested CASE WHEN statements. Limited to simple conditional logic.
-- **Heuristic numeric predicates:** ❌ **FAILS** - When asked for queries with numeric aggregations (e.g., "more than 5 orders"), generates only numbers instead of SQL queries. Cannot properly translate heuristic requirements into SQL.
-- **Window functions (ROW_NUMBER() OVER, etc.):** ❌ **FAILS** - Does not generate SQL with window functions. Instead generates explanatory text or uses GROUP BY incorrectly.
+- ❌ **Recursive CTEs (`WITH RECURSIVE`)** - Generates explanatory text instead of SQL
+- ❌ **UNION / UNION ALL** - Generates explanatory text instead of SQL
+- ❌ **Deep CASE WHEN nesting (3+ levels)** - Generates multiple-choice responses instead of SQL
+- ❌ **Heuristic numeric predicates** - Generates only numbers instead of SQL queries (e.g., "more than 5 orders")
+- ❌ **Window functions** - Generates explanatory text or uses GROUP BY incorrectly
 
-**Working Features (Tested and Confirmed):**
+**Working features:**
 
-- **LEFT JOIN with NULL checks:** ✅ **WORKS** - Correctly generates SQL with LEFT JOIN and WHERE IS NULL clauses to find records without matching relationships.
+- ✅ **LEFT JOIN with NULL checks** - Correctly generates SQL with LEFT JOIN and WHERE IS NULL
 
-**Not Fully Tested:**
-
-- **ORDER BY alias handling:** Basic ORDER BY works correctly, but alias handling not fully tested in complex scenarios.
-
-**Best practice:** Always provide explicit schema context in prompts. For complex queries requiring recursive CTEs, UNION operations, window functions, or deep CASE WHEN nesting, consider alternative approaches or manual query construction.
-
-### Known Issues (v0.3.0, checkpoint-1000)
-
-Test results from `test_limitations_cli.ps1`:
-
-- **Recursive CTEs:** ❌ **CONFIRMED** - Does not generate SQL with `WITH RECURSIVE`. Generates explanatory text instead.
-- **UNION / UNION ALL:** ❌ **CONFIRMED** - Does not generate SQL with UNION operations. Generates explanatory text instead.
-- **LEFT JOIN with NULL checks:** ✅ **CONFIRMED WORKING** - Correctly generates SQL with LEFT JOIN and WHERE IS NULL.
-- **Nested CASE WHEN (3+ levels):** ❌ **CONFIRMED** - Does not generate SQL with nested CASE WHEN. Generates multiple-choice responses instead.
-- **Heuristic numeric predicates:** ❌ **CONFIRMED** - When prompts require numeric aggregations with conditions (e.g., "more than 5 orders"), generates only numbers instead of SQL queries.
-- **Window functions:** ❌ **CONFIRMED** - Does not generate SQL with ROW_NUMBER() OVER or other window functions. Generates explanatory text instead.
-- **ORDER BY:** Partially tested - Basic ORDER BY works correctly, but alias handling not fully tested.
-
-These limitations were confirmed through direct testing with `expert-cli chat` using limitation test cases. When prompts require these structures, the expert may generate explanatory text or incorrect output instead of valid SQL. Validate generated SQL and consider alternative query approaches for complex requirements.
+**Best practice:** Always provide explicit schema context in prompts. For complex queries requiring the above features, consider alternative approaches or manual query construction.
 
 ## Training & Configuration
 
@@ -173,31 +149,14 @@ cd F:/Node/hivellm/expert/experts/expert-sql
 # Outputs expert-sql-qwen3-0-6b.v0.3.0.expert (~26 MB) + .sha256
 ```
 
-`manifest.json` sets `packaging_checkpoint: "checkpoint-1000"` so packaging pulls the best quality checkpoint selected after comparative analysis.
+Packaging uses checkpoint-1000 (best quality from comparative analysis).
 
-### Package Layout
+Package includes: manifest.json, adapter_model.safetensors, tokenizer files, grammar.gbnf, and LICENSE. All artifacts at package root for cross-platform compatibility.
 
-```
-expert-sql-qwen3-0-6b.v0.3.0.expert
-├── manifest.json
-├── adapter_config.json
-├── adapter_model.safetensors
-├── tokenizer.json
-├── tokenizer_config.json
-├── special_tokens_map.json
-├── training_args.bin
-├── vocab.json
-├── README.md
-├── grammar.gbnf
-└── LICENSE
-```
-
-All artifacts live at the package root for loader compatibility (Linux, macOS, Windows).
-
-### Integrity & Smoke Tests
+### Integrity Tests
 
 ```powershell
-.\test_packaged_expert.ps1          # Extract, validate structure, run 3 inference checks
+.\test_packaged_expert.ps1
 sha256sum -c expert-sql-qwen3-0-6b.v0.3.0.expert.sha256
 ```
 
@@ -212,14 +171,11 @@ sha256sum -c expert-sql-qwen3-0-6b.v0.3.0.expert.sha256
 .\benchmark_performance.ps1 [-Iterations 50] [-DetailedOutput]
 ```
 
-Results summary (v0.3.0, checkpoint-1000):
-- 16/18 test scenarios correct (88.9% success rate) across basic and intermediate queries
-- Best overall quality compared to checkpoints 750, 1250, 1496
-- Syntax validity high, inference latency ~100-150 ms (RTX 4090)
-- Strong on basic SELECT, WHERE, JOIN, GROUP BY, subqueries, LEFT JOIN with NULL checks
-- **Limitations confirmed:** Recursive CTEs, UNION operations, window functions, deep CASE WHEN nesting, and heuristic numeric predicates do not work correctly
-
-**Limitation test results:** See `test_limitations_cli.ps1` for detailed test cases. Most complex SQL features generate explanatory text instead of SQL.
+**Results (v0.3.0, checkpoint-1000):**
+- 16/18 test scenarios correct (88.9% success rate)
+- Best quality compared to checkpoints 750, 1250, 1496
+- Inference latency ~100-150 ms (RTX 4090)
+- Strong on basic SELECT, WHERE, JOIN, GROUP BY, subqueries
 
 ## Troubleshooting
 - **Quality dips:** confirm `use_unsloth: true`, avoid extending beyond 0.5 epoch without evaluation.
@@ -232,11 +188,9 @@ Results summary (v0.3.0, checkpoint-1000):
 ### v0.3.0 (Production)
 - Expanded dataset blend (gretelai, Clinton, synthetic_fixes)
 - SQL dialect normalized to PostgreSQL
-- Checkpoint-1000 selected after comparative analysis (16/18 correct, 88.9% success rate)
-- Best overall quality and consistency compared to checkpoints 750, 1250, 1496
-- Improved deduplication (2,855 questions removed) and English-only prompts
-- **Limitation tests confirmed:** Recursive CTEs, UNION operations, window functions, deep CASE WHEN nesting, and heuristic numeric predicates do not work correctly (tested via `test_limitations_cli.ps1`)
-- **Working features confirmed:** LEFT JOIN with NULL checks works correctly
+- Checkpoint-1000 selected (16/18 correct, 88.9% success rate)
+- Best quality compared to checkpoints 750, 1250, 1496
+- Improved deduplication (2,855 questions removed)
 
 ### v0.2.0
 - Packaging format flattened (no nested directories)
